@@ -47,9 +47,4 @@ Dự án xây dựng hệ thống Visual Question Answering (VQA) tiếng Việt
 ## 5. Demo
 - Tích hợp giao diện người dùng (ví dụ: Gradio, Streamlit) để trực quan hóa mô hình (khuyến khích).
 
-## 6. Sản phẩm & Cấu trúc Repo
-- Mã nguồn hệ thống.
-- Báo cáo phân tích và đánh giá (15-20 trang).
-- Slide và Video Demo.
-- Dataset và Checkpoint được public (HuggingFace Hub/Google Drive).
 
