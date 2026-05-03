@@ -1,13 +1,13 @@
 import torch
 import torch.nn as nn
 from torchvision import models
-from transformers import AutoModel, AutoConfig, AutoTokenizer
+from transformers import AutoModel
 
 class ImageEncoder(nn.Module):
     def __init__(self, model_name='resnet50', pretrained=True):
         super(ImageEncoder, self).__init__()
         if model_name == 'resnet50':
-            resnet = models.resnet50(pretrained=pretrained)
+            resnet = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1 if pretrained else None)
             self.feature_extractor = nn.Sequential(*list(resnet.children())[:-2])
             self.out_channels = 2048
         elif model_name == 'vit':
@@ -24,7 +24,6 @@ class ImageEncoder(nn.Module):
 class TextEncoder(nn.Module):
     def __init__(self, model_name='vinai/phobert-base', freeze=True):
         super(TextEncoder, self).__init__()
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.bert = AutoModel.from_pretrained(model_name)
         
         if freeze:

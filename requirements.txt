@@ -14,6 +14,7 @@ pandas
 matplotlib
 tqdm
 nltk
+rouge_score
 underthesea
 bert-score
 evaluate

@@ -1,4 +1,5 @@
 import torch
+from PIL import Image
 from transformers import PaliGemmaForConditionalGeneration, AutoProcessor
 from peft import LoraConfig, get_peft_model
 from utils.data_loader import get_dataloader
@@ -33,7 +34,8 @@ def train_paligemma():
     model.print_trainable_parameters()
     
     # DataLoader - Note: for PaliGemma, we pass raw images/text to processor later
-    train_loader = get_dataloader(config, config.TRAIN_JSON, tokenizer=None, is_train=True, batch_size=config.BATCH_SIZE_B)
+    # normalize=False because PaliGemma's processor handles its own normalization
+    train_loader = get_dataloader(config, config.TRAIN_JSON, tokenizer=None, is_train=True, batch_size=config.BATCH_SIZE_B, normalize=False)
     
     optimizer = torch.optim.AdamW(model.parameters(), lr=config.LEARNING_RATE_B)
     
@@ -69,5 +71,4 @@ def train_paligemma():
         print(f"Saved checkpoint to {save_path}")
 
 if __name__ == "__main__":
-    from PIL import Image
     train_paligemma()

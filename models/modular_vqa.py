@@ -16,10 +16,12 @@ class ModularVQA(nn.Module):
             output_dim=512
         )
         
+        fused_dim = 512 * 2  # output_dim * 2 from fusion concatenation
+        
         if decoder_type == 'lstm':
-            self.decoder = LSTMDecoder(512, 512, vocab_size)
+            self.decoder = LSTMDecoder(512, 512, vocab_size, fused_dim=fused_dim)
         else:
-            self.decoder = TransformerDecoder(512, 512, vocab_size)
+            self.decoder = TransformerDecoder(512, 512, vocab_size, fused_dim=fused_dim)
             
     def forward(self, images, input_ids, attention_mask, target_ids=None):
         v_features = self.image_encoder(images)
@@ -27,5 +29,9 @@ class ModularVQA(nn.Module):
         
         fused = self.fusion(v_features, t_features)
         
-        logits = self.decoder(fused, target_ids)
+        if target_ids is not None:
+            logits = self.decoder(fused, target_ids, max_len=target_ids.size(1))
+        else:
+            logits = self.decoder(fused, target_ids)
+            
         return logits

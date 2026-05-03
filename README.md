@@ -3,7 +3,7 @@
 Dự án xây dựng hệ thống Visual Question Answering (VQA) tiếng Việt trên một miền chuyên biệt. Hệ thống nhận đầu vào là ảnh và câu hỏi tiếng Việt, từ đó sinh ra câu trả lời tương ứng. Dự án kết hợp các kiến thức về mạng nơ-ron tích chập (CNN), mạng học sâu chuỗi (LSTM, Transformer) và học đa phương thức (Multimodal Learning).
 
 ## 1. Dữ liệu
-- **Miền chuyên biệt**: OpenViVQA (Dữ liệu đa miền tại Việt Nam: thắng cảnh, ẩm thực, đời sống...)
+- **Miền chuyên biệt**: (Sinh viên/Nhóm tự chọn: món ăn Việt, thắng cảnh, biển báo giao thông, nông sản, trang phục truyền thống...)
 - **Quy mô dữ liệu**:
   - Tập huấn luyện (Train): $\ge$ 2000 bộ (ảnh, câu hỏi, câu trả lời) với tối thiểu 200 ảnh và mỗi ảnh có $\ge$ 3 câu hỏi.
   - Tập kiểm thử (Test): $\ge$ 50 bộ chuẩn bị thủ công, ảnh không trùng lặp với tập train.

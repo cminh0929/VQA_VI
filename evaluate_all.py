@@ -1,5 +1,5 @@
 import torch
-from transformers import PaliGemmaForConditionalGeneration, AutoProcessor
+from transformers import PaliGemmaForConditionalGeneration, AutoProcessor, AutoTokenizer
 from models.modular_vqa import ModularVQA
 from utils.data_loader import get_dataloader
 from utils.metrics import VQAMetrics
@@ -63,14 +63,13 @@ def evaluate_paligemma(model_id_or_path, config, test_loader, device, is_zero_sh
                 # Simple normalization
                 p = pred.strip().lower()
                 g = gt.strip().lower()
-                if g in p or p in g: # Soft match for demo
+                if p == g:  # Exact match
                     correct += 1
                 total += 1
                 
     return {'acc': correct / total if total > 0 else 0}
 
 if __name__ == "__main__":
-    from transformers import AutoTokenizer
     config = Config()
     device = "cuda" if torch.cuda.is_available() else "cpu"
     
@@ -79,6 +78,8 @@ if __name__ == "__main__":
     
     # Data for evaluation (using Val set as proxy for Test if Test has no answers)
     test_loader = get_dataloader(config, config.VAL_JSON, tokenizer=tokenizer, is_train=False, batch_size=8)
+    # Separate loader for PaliGemma (no normalization)
+    test_loader_pali = get_dataloader(config, config.VAL_JSON, tokenizer=None, is_train=False, batch_size=4, normalize=False)
     
     print("\n" + "="*30)
     print("STARTING EVALUATION OF ALL CONFIGS")
@@ -89,7 +90,7 @@ if __name__ == "__main__":
     # res_a2 = evaluate_modular("checkpoints/modular_transformer_epoch1.pt", 'transformer', config, test_loader, device)
     
     # B1 (Zero-shot)
-    res_b1 = evaluate_paligemma(config.MODEL_ID_B, config, test_loader, device, is_zero_shot=True)
+    res_b1 = evaluate_paligemma(config.MODEL_ID_B, config, test_loader_pali, device, is_zero_shot=True)
     
     # B2 (Fine-tuned)
     # b2_path = os.path.join(config.CHECKPOINT_DIR, "paligemma_b2_epoch1")

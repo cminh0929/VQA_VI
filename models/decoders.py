@@ -1,9 +1,8 @@
 import torch
 import torch.nn as nn
-import random
 
 class LSTMDecoder(nn.Module):
-    def __init__(self, input_dim, hidden_dim, vocab_size, num_layers=1):
+    def __init__(self, input_dim, hidden_dim, vocab_size, fused_dim=1024, num_layers=1):
         super(LSTMDecoder, self).__init__()
         self.hidden_dim = hidden_dim
         self.embedding = nn.Embedding(vocab_size, input_dim)
@@ -12,9 +11,9 @@ class LSTMDecoder(nn.Module):
         self.lstm = nn.LSTM(input_dim, hidden_dim, num_layers, batch_first=True)
         self.fc = nn.Linear(hidden_dim, vocab_size)
         
-        # Layers to initialize hidden and cell states from fused features (1024 dims)
-        self.init_h = nn.Linear(1024, hidden_dim)
-        self.init_c = nn.Linear(1024, hidden_dim)
+        # Layers to initialize hidden and cell states from fused features
+        self.init_h = nn.Linear(fused_dim, hidden_dim)
+        self.init_c = nn.Linear(fused_dim, hidden_dim)
         
     def forward(self, fused_features, target_ids=None, max_len=10, teacher_forcing_ratio=0.5):
         batch_size = fused_features.size(0)
@@ -34,7 +33,7 @@ class LSTMDecoder(nn.Module):
             logits = self.fc(output.squeeze(1)) # [batch, vocab_size]
             outputs.append(logits)
             
-            if target_ids is not None and t < target_ids.size(1) and random.random() < teacher_forcing_ratio:
+            if target_ids is not None and t < target_ids.size(1) and self.training and torch.rand(1).item() < teacher_forcing_ratio:
                 input_id = target_ids[:, t].unsqueeze(1)
             else:
                 input_id = logits.argmax(1).unsqueeze(1)
@@ -42,7 +41,7 @@ class LSTMDecoder(nn.Module):
         return torch.stack(outputs, dim=1)
 
 class TransformerDecoder(nn.Module):
-    def __init__(self, input_dim, hidden_dim, vocab_size, nhead=8, num_layers=2):
+    def __init__(self, input_dim, hidden_dim, vocab_size, fused_dim=1024, nhead=8, num_layers=2):
         super(TransformerDecoder, self).__init__()
         self.embedding = nn.Embedding(vocab_size, hidden_dim)
         self.pos_encoder = nn.Parameter(torch.zeros(1, 100, hidden_dim)) # Simple positional encoding
@@ -52,7 +51,7 @@ class TransformerDecoder(nn.Module):
         self.fc = nn.Linear(hidden_dim, vocab_size)
         
         # Map fused_features to hidden_dim for memory input
-        self.memory_proj = nn.Linear(1024, hidden_dim)
+        self.memory_proj = nn.Linear(fused_dim, hidden_dim)
         
     def forward(self, fused_features, target_ids=None, max_len=10):
         batch_size = fused_features.size(0)

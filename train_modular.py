@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader
 from models.modular_vqa import ModularVQA
 from utils.data_loader import get_dataloader
 from config import Config
@@ -30,6 +29,9 @@ def train_modular(decoder_type='lstm', num_epochs=5, batch_size=16, learning_rat
     
     criterion = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token_id)
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    
+    # Ensure checkpoint directory exists
+    os.makedirs(config.CHECKPOINT_DIR, exist_ok=True)
 
     # 3. Training Loop
     for epoch in range(num_epochs):
@@ -76,10 +78,15 @@ def train_modular(decoder_type='lstm', num_epochs=5, batch_size=16, learning_rat
         
         # Save Checkpoint
         save_path = os.path.join(config.CHECKPOINT_DIR, f"modular_{decoder_type}_epoch{epoch+1}.pt")
-        if not os.path.exists(config.CHECKPOINT_DIR):
-            os.makedirs(config.CHECKPOINT_DIR)
         torch.save(model.state_dict(), save_path)
 
 if __name__ == "__main__":
-    # Train A1 (light version: 1 epoch)
-    train_modular(decoder_type='lstm', num_epochs=1)
+    import argparse
+    parser = argparse.ArgumentParser(description="Train Modular VQA model")
+    parser.add_argument('--decoder_type', type=str, default='lstm', choices=['lstm', 'transformer'])
+    parser.add_argument('--num_epochs', type=int, default=5)
+    parser.add_argument('--batch_size', type=int, default=16)
+    parser.add_argument('--lr', type=float, default=1e-4)
+    args = parser.parse_args()
+    train_modular(decoder_type=args.decoder_type, num_epochs=args.num_epochs,
+                  batch_size=args.batch_size, learning_rate=args.lr)
