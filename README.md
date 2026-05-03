@@ -1,50 +1,114 @@
-# DỰ ÁN CUỐI KỲ MÔN HỌC SÂU: Hệ thống Hỏi đáp trên Ảnh (Visual Question Answering)
+# 🇻🇳 Vietnamese Visual Question Answering (VQA-VN)
 
-Dự án xây dựng hệ thống Visual Question Answering (VQA) tiếng Việt trên một miền chuyên biệt. Hệ thống nhận đầu vào là ảnh và câu hỏi tiếng Việt, từ đó sinh ra câu trả lời tương ứng. Dự án kết hợp các kiến thức về mạng nơ-ron tích chập (CNN), mạng học sâu chuỗi (LSTM, Transformer) và học đa phương thức (Multimodal Learning).
+Hệ thống Trả lời Câu hỏi trên Ảnh bằng Tiếng Việt (Visual Question Answering) được thiết kế theo cấu trúc module linh hoạt, hỗ trợ cả kiến trúc truyền thống (CNN + LSTM/Transformer) và mô hình đa phương thức hiện đại (PaliGemma - Google).
 
-## 1. Dữ liệu
-- **Miền chuyên biệt**: (Sinh viên/Nhóm tự chọn: món ăn Việt, thắng cảnh, biển báo giao thông, nông sản, trang phục truyền thống...)
-- **Quy mô dữ liệu**:
-  - Tập huấn luyện (Train): $\ge$ 2000 bộ (ảnh, câu hỏi, câu trả lời) với tối thiểu 200 ảnh và mỗi ảnh có $\ge$ 3 câu hỏi.
-  - Tập kiểm thử (Test): $\ge$ 50 bộ chuẩn bị thủ công, ảnh không trùng lặp với tập train.
-- **Loại câu hỏi**: Đa dạng (Yes/No, đếm số lượng, nhận dạng, thuộc tính, không gian...).
-- **Đầu ra**: Câu trả lời ngắn ngọn (dưới 10 từ).
-- **Phân chia dữ liệu**: Train / Val / Test theo tỷ lệ 80/10/10.
-- **Tăng cường dữ liệu (Data Augmentation)**: Áp dụng các kỹ thuật tăng cường ảnh (lật, xoay, crop) và văn bản (paraphrase, back-translation).
+Dự án này được tối ưu hóa để chạy trên môi trường **Kaggle** và hỗ trợ giao diện thử nghiệm trực quan qua **Gradio**.
 
-## 2. Mô hình (Hai hướng tiếp cận)
+---
 
-### Hướng A — Kiến trúc rời
-- **Image encoder**: Sử dụng CNN pretrained (ResNet/VGG/EfficientNet) hoặc ViT.
-- **Text encoder**: Sử dụng LSTM/BiLSTM hoặc PhoBERT.
-- **Fusion**: Thực hiện kết hợp đặc trưng qua concat, element-wise, hoặc co-attention.
-- **Answer decoder**: So sánh giữa LSTM decoder và Transformer decoder (giữ nguyên encoder).
+## 📂 1. Hướng Dẫn Chuẩn Bị Dữ Liệu (Data Setup)
 
-### Hướng B — Multimodal pretrained
-- Thực hiện Fine-tune các mô hình: BLIP/BLIP-2, ViLT, LLaVA, Qwen-VL, hoặc PaliGemma (sử dụng LoRA/PEFT nếu cần).
-- Chiến lược xử lý tiếng Việt: Dịch thuật trước khi đưa vào mô hình hoặc sử dụng mô hình hỗ trợ trực tiếp tiếng Việt.
+Dự án này được thiết kế theo hướng **Data-Agnostic** (Không phụ thuộc vào một bộ dữ liệu cố định). Bạn hoàn toàn có thể tự thu thập ảnh và tạo câu hỏi của riêng mình (Ví dụ: Nông sản, Biển báo giao thông, Món ăn, v.v.) mà không cần phải thay đổi code của mô hình.
 
-## 3. Thực nghiệm và Đánh giá
+### 1.1. Cấu trúc thư mục dữ liệu chuẩn
+Tạo một thư mục tên là `data/` ở thư mục gốc của dự án. Đặt tất cả ảnh và các file JSON vào đúng theo cấu trúc sau:
 
-### Cấu hình thực nghiệm
-1. **A1**: Hướng A với LSTM decoder.
-2. **A2**: Hướng A với Transformer decoder (So sánh với A1 để đánh giá ảnh hưởng của decoder).
-3. **B1**: Hướng B ở chế độ zero-shot.
-4. **B2**: Hướng B sau khi fine-tuned.
+```text
+VQA_VI/
+├── data/
+│   ├── images/              # (1) BỎ TẤT CẢ ẢNH VÀO ĐÂY (KHÔNG CẦN CHIA THƯ MỤC CON)
+│   │   ├── apple_01.jpg
+│   │   ├── banana_02.png
+│   │   └── ...
+│   ├── train.json           # (2) Tệp dữ liệu dùng để Huấn luyện (80%)
+│   ├── val.json             # (3) Tệp dữ liệu dùng để Xác thực/Đánh giá (10%)
+│   └── test.json            # (4) Tệp dữ liệu Kiểm thử (10%)
+```
 
-### Tiêu chí đánh giá
-- VQA Accuracy (exact match / soft accuracy chuẩn VQA v2).
-- Các độ đo xử lý ngôn ngữ: BLEU, ROUGE-L, METEOR.
-- Đánh giá ngữ nghĩa: BERTScore.
-- Phương pháp đánh giá LLM-as-a-judge.
+> **Lưu ý:** Code đã được thiết kế thông minh để tự động tìm ảnh. Bạn chỉ việc gom toàn bộ ảnh vứt thẳng vào thư mục `data/images/`.
 
-## 4. Các giải pháp nâng cao chất lượng (Nâng cao)
-- **Reinforcement Learning (RL)**: Huấn luyện bổ sung bằng RL (PPO với reward là VQA Accuracy/BERTScore, DPO, hoặc RLHF).
-  - Yêu cầu Preference data $\ge$ 100 cặp.
-  - So sánh kết quả RL và SFT (Supervised Fine-Tuning).
-- Các kỹ thuật tối ưu và nâng cao khác.
+### 1.2. Định dạng của tệp JSON
+Cả 3 file `train.json`, `val.json`, và `test.json` đều phải tuân thủ nghiêm ngặt cấu trúc mảng JSON gồm các Dictionary như sau:
 
-## 5. Demo
-- Tích hợp giao diện người dùng (ví dụ: Gradio, Streamlit) để trực quan hóa mô hình (khuyến khích).
+```json
+[
+    {
+        "image_id": "apple_01.jpg",
+        "question": "Trong hình có bao nhiêu quả táo?",
+        "answer": "3 quả"
+    },
+    {
+        "image_id": "banana_02.png",
+        "question": "Quả chuối có màu gì?",
+        "answer": "màu vàng"
+    }
+]
+```
+* **`image_id`**: Tên file ảnh (phải khớp chính xác 100% với tên file trong thư mục `data/images/`).
+* **`question`**: Câu hỏi bằng tiếng Việt.
+* **`answer`**: Câu trả lời ngắn gọn (dưới 10 từ).
 
+---
 
+## 🚀 2. Cài đặt và Môi trường (Setup)
+
+**Cài đặt thư viện:**
+```bash
+pip install -r requirements.txt
+```
+
+**Đối với PaliGemma (Hướng B):**
+Do `PaliGemma-3B` là mô hình bảo mật của Google, bạn cần phải:
+1. Đăng nhập vào [Hugging Face](https://huggingface.co/google/paligemma-3b-pt-224) và bấm nút **"Acknowledge license"** để cấp quyền.
+2. Tạo một Access Token (chuỗi mã) tại trang Profile Hugging Face.
+3. Nếu chạy trên Kaggle: Thêm Token đó vào mục **Add-ons -> Secrets** với tên `HF_TOKEN`.
+
+---
+
+## 🧠 3. Huấn Luyện Mô Hình (Training)
+
+Hệ thống hỗ trợ 4 phiên bản mô hình khác nhau. Bạn có thể chọn huấn luyện phiên bản nào tùy thích. File lưu trữ (checkpoint) sẽ tự động được tạo trong thư mục `checkpoints/`.
+
+### 3.1. Hướng A: Kiến trúc Module (ResNet50 + PhoBERT)
+Được thiết kế xây dựng từ đầu (From scratch) cho phần logic gộp.
+
+* **A1 - LSTM Decoder:**
+  ```bash
+  python train_modular.py --decoder_type lstm --num_epochs 10
+  ```
+* **A2 - Transformer Decoder:**
+  ```bash
+  python train_modular.py --decoder_type transformer --num_epochs 10
+  ```
+
+### 3.2. Hướng B: PaliGemma (Google)
+Sử dụng mô hình siêu trí tuệ 11GB của Google, tinh chỉnh siêu nhẹ thông qua **LoRA (PEFT)**.
+
+* **B1 - PaliGemma Zero-shot:** (Không cần huấn luyện, chạy thẳng)
+* **B2 - PaliGemma Fine-tuned (LoRA):**
+  ```bash
+  python train_paligemma.py
+  ```
+
+---
+
+## 📊 4. Đánh Giá (Evaluation)
+
+Sau khi huấn luyện xong, bạn có thể chạy file đánh giá để so sánh điểm số giữa các mô hình trên tập `val.json`.
+Hệ thống sẽ đo đạc bằng 3 thang đo chuẩn xác: **Accuracy**, **BLEU**, và **ROUGE-L**.
+
+```bash
+python evaluate_all.py
+```
+*(Code đánh giá sẽ tự động quét thư mục `checkpoints/` để lấy trọng số mới nhất mà bạn vừa train xong).*
+
+---
+
+## 🎨 5. Chạy Ứng Dụng Demo (Gradio App)
+
+Bạn có thể mở giao diện đồ họa web để tải ảnh lên và thử nghiệm trực tiếp bằng câu hỏi tiếng Việt. Ứng dụng tích hợp sẵn 4 nút bấm tương ứng với 4 mô hình (A1, A2, B1, B2) để bạn dễ dàng đối chiếu sự thông minh của từng mô hình.
+
+```bash
+python app.py
+```
+Sau đó bấm vào đường link `http://127.0.0.1:7860` trên màn hình terminal để sử dụng.
