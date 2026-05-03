@@ -74,8 +74,11 @@ if __name__ == "__main__":
     config = Config()
     device = "cuda" if torch.cuda.is_available() else "cpu"
     
+    # Load tokenizer for data loading
+    tokenizer = AutoTokenizer.from_pretrained('vinai/phobert-base')
+    
     # Data for evaluation (using Val set as proxy for Test if Test has no answers)
-    test_loader = get_dataloader(config, config.VAL_JSON, is_train=False, batch_size=8)
+    test_loader = get_dataloader(config, config.VAL_JSON, tokenizer=tokenizer, is_train=False, batch_size=8)
     
     print("\n" + "="*30)
     print("STARTING EVALUATION OF ALL CONFIGS")
