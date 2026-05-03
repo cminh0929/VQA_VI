@@ -1,36 +1,71 @@
+import torch
+import numpy as np
+from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
+from rouge_score import rouge_scorer
 import nltk
-from nltk.translate.bleu_score import sentence_bleu
-from evaluate import load
-from bert_score import score
 
-# Pre-load metrics
-rouge = load("rouge")
-# meteor = load("meteor") # Requires java, optional
+# Ensure nltk resources are available
+try:
+    nltk.data.find('tokenizers/punkt')
+except LookupError:
+    nltk.download('punkt')
 
-def calculate_vqa_accuracy(predictions, ground_truths):
-    correct = 0
-    for pred, gt in zip(predictions, ground_truths):
-        if pred.lower().strip() == gt.lower().strip():
-            correct += 1
-    return correct / len(predictions) if predictions else 0
+class VQAMetrics:
+    def __init__(self, tokenizer):
+        self.tokenizer = tokenizer
+        self.rouge_scorer = rouge_scorer.RougeScorer(['rougeL'], use_stemmer=True)
+        self.smoothie = SmoothingFunction().method1
 
-def calculate_metrics(predictions, ground_truths):
-    # BLEU
-    bleu_scores = []
-    for pred, gt in zip(predictions, ground_truths):
-        bleu_scores.append(sentence_bleu([gt.split()], pred.split()))
-    avg_bleu = sum(bleu_scores) / len(bleu_scores) if bleu_scores else 0
-    
-    # ROUGE
-    rouge_results = rouge.compute(predictions=predictions, references=ground_truths)
-    
-    # BERTScore
-    P, R, F1 = score(predictions, ground_truths, lang="vi", verbose=False)
-    avg_bert_f1 = F1.mean().item()
-    
-    return {
-        "vqa_accuracy": calculate_vqa_accuracy(predictions, ground_truths),
-        "bleu": avg_bleu,
-        "rougeL": rouge_results['rougeL'],
-        "bert_f1": avg_bert_f1
-    }
+    def decode_ids(self, ids):
+        """Convert token IDs back to string, skipping special tokens."""
+        if torch.is_tensor(ids):
+            ids = ids.tolist()
+        return self.tokenizer.decode(ids, skip_special_tokens=True).strip().lower()
+
+    def compute_accuracy(self, preds, targets):
+        """Calculate Exact Match Accuracy."""
+        correct = 0
+        for p, t in zip(preds, targets):
+            if p == t:
+                correct += 1
+        return correct / len(preds) if len(preds) > 0 else 0
+
+    def compute_batch_metrics(self, logits, target_ids):
+        """
+        Calculate metrics for a batch of predictions.
+        logits: [batch, seq_len, vocab_size]
+        target_ids: [batch, seq_len]
+        """
+        preds_ids = torch.argmax(logits, dim=-1)
+        
+        batch_preds = [self.decode_ids(p) for p in preds_ids]
+        batch_targets = [self.decode_ids(t) for t in target_ids]
+        
+        # 1. Accuracy (Exact Match)
+        acc = self.compute_accuracy(batch_preds, batch_targets)
+        
+        # 2. BLEU & ROUGE-L
+        bleu_scores = []
+        rouge_scores = []
+        
+        for p, t in zip(batch_preds, batch_targets):
+            # BLEU-4
+            p_tokens = p.split()
+            t_tokens = t.split()
+            if not t_tokens: # Handle empty target
+                bleu = 0.0
+                rouge = 0.0
+            else:
+                bleu = sentence_bleu([t_tokens], p_tokens, smoothing_function=self.smoothie)
+                rouge = self.rouge_scorer.score(t, p)['rougeL'].fmeasure
+            
+            bleu_scores.append(bleu)
+            rouge_scores.append(rouge)
+            
+        return {
+            'accuracy': acc,
+            'bleu': np.mean(bleu_scores),
+            'rougeL': np.mean(rouge_scores),
+            'preds_sample': batch_preds[:2],   # Return samples for logging
+            'targets_sample': batch_targets[:2]
+        }
