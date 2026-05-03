@@ -39,6 +39,9 @@ def train_paligemma():
     
     optimizer = torch.optim.AdamW(model.parameters(), lr=config.LEARNING_RATE_B)
     
+    # Ensure checkpoint directory exists
+    os.makedirs(config.CHECKPOINT_DIR, exist_ok=True)
+    
     # Training Loop
     for epoch in range(config.EPOCHS_B):
         model.train()
@@ -68,6 +71,7 @@ def train_paligemma():
         # Save B2 Checkpoint
         save_path = os.path.join(config.CHECKPOINT_DIR, f"paligemma_b2_epoch{epoch+1}")
         model.save_pretrained(save_path)
+        processor.save_pretrained(save_path)
         print(f"Saved checkpoint to {save_path}")
 
 if __name__ == "__main__":

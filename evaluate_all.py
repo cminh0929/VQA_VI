@@ -53,11 +53,12 @@ def evaluate_paligemma(model_id_or_path, config, test_loader, device, is_zero_sh
             images = [Image.fromarray(img.numpy().transpose(1, 2, 0).astype('uint8')) for img in batch['image']]
             
             inputs = processor(text=questions, images=images, return_tensors="pt", padding=True).to(device)
+            input_len = inputs['input_ids'].shape[1]
             output_tokens = model.generate(**inputs, max_new_tokens=20)
             
-            # Extract only the generated part
-            # PaliGemma generate returns full sequence [prompt + completion]
-            decoded = processor.batch_decode(output_tokens, skip_special_tokens=True)
+            # Extract only the generated part (strip prompt tokens)
+            generated_tokens = output_tokens[:, input_len:]
+            decoded = processor.batch_decode(generated_tokens, skip_special_tokens=True)
             
             for pred, gt in zip(decoded, answers):
                 # Simple normalization

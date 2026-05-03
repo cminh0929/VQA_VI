@@ -11,7 +11,7 @@ from transformers import AutoTokenizer
 
 from utils.metrics import VQAMetrics
 
-def train_modular(decoder_type='lstm', num_epochs=5, batch_size=16, learning_rate=1e-4):
+def train_modular(decoder_type='lstm', num_epochs=5, batch_size=None, learning_rate=1e-4):
     config = Config()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
@@ -19,6 +19,10 @@ def train_modular(decoder_type='lstm', num_epochs=5, batch_size=16, learning_rat
     # 0. Load Tokenizer (PhoBERT)
     tokenizer = AutoTokenizer.from_pretrained('vinai/phobert-base')
     metrics_calc = VQAMetrics(tokenizer)
+    
+    # Default batch_size from config if not specified
+    if batch_size is None:
+        batch_size = config.BATCH_SIZE_A
 
     # 1. Load Data
     train_loader = get_dataloader(config, config.TRAIN_JSON, tokenizer=tokenizer, is_train=True, batch_size=batch_size)

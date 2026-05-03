@@ -3,7 +3,6 @@ import json
 import torch
 import cv2
 from torch.utils.data import Dataset, DataLoader
-from PIL import Image
 from transformers import AutoTokenizer
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
