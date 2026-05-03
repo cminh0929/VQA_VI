@@ -49,9 +49,9 @@ def train_paligemma():
         pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{config.EPOCHS_B}")
         
         for batch in pbar:
-            # Batch items from data_loader
-            questions = [item['question'] for item in batch['original_item']]
-            answers = [item['answer'] for item in batch['original_item']]
+            # Batch items from data_loader (default_collate groups strings into lists)
+            questions = batch['question']
+            answers = batch['answer']
             images = [Image.fromarray(img.numpy().transpose(1, 2, 0).astype('uint8')) for img in batch['image']] # Need PIL format
             
             # Prepare inputs for PaliGemma

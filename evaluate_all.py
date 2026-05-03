@@ -48,8 +48,8 @@ def evaluate_paligemma(model_id_or_path, config, test_loader, device, is_zero_sh
     
     with torch.no_grad():
         for batch in tqdm(test_loader, desc=f"Eval PaliGemma {'Zero-shot' if is_zero_shot else 'Fine-tuned'}"):
-            questions = [item['question'] for item in batch['original_item']]
-            answers = [item['answer'] for item in batch['original_item']]
+            questions = batch['question']
+            answers = batch['answer']
             images = [Image.fromarray(img.numpy().transpose(1, 2, 0).astype('uint8')) for img in batch['image']]
             
             inputs = processor(text=questions, images=images, return_tensors="pt", padding=True).to(device)
