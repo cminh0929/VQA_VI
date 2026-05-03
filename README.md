@@ -1,114 +1,117 @@
-# 🇻🇳 Vietnamese Visual Question Answering (VQA-VN)
+# Vietnamese Visual Question Answering (VQA)
 
-Hệ thống Trả lời Câu hỏi trên Ảnh bằng Tiếng Việt (Visual Question Answering) được thiết kế theo cấu trúc module linh hoạt, hỗ trợ cả kiến trúc truyền thống (CNN + LSTM/Transformer) và mô hình đa phương thức hiện đại (PaliGemma - Google).
+Hệ thống Visual Question Answering (VQA) dành riêng cho tiếng Việt. Dự án được phát triển dựa trên cấu trúc linh hoạt (modular design), cho phép triển khai cả kiến trúc rời rạc (CNN + LSTM/Transformer) và kiến trúc học đa phương thức hiện đại (PaliGemma) trên các tập dữ liệu tùy chỉnh.
 
-Dự án này được tối ưu hóa để chạy trên môi trường **Kaggle** và hỗ trợ giao diện thử nghiệm trực quan qua **Gradio**.
+Hệ thống được tối ưu hóa để vận hành trên môi trường Kaggle Notebook và cung cấp giao diện tương tác (Gradio) phục vụ mục đích kiểm thử cục bộ.
 
 ---
 
-## 📂 1. Hướng Dẫn Chuẩn Bị Dữ Liệu (Data Setup)
+## 1. Hướng Dẫn Chuẩn Bị Dữ Liệu
 
-Dự án này được thiết kế theo hướng **Data-Agnostic** (Không phụ thuộc vào một bộ dữ liệu cố định). Bạn hoàn toàn có thể tự thu thập ảnh và tạo câu hỏi của riêng mình (Ví dụ: Nông sản, Biển báo giao thông, Món ăn, v.v.) mà không cần phải thay đổi code của mô hình.
+Kiến trúc của dự án là Data-Agnostic (không phụ thuộc vào một miền dữ liệu cụ thể). Người dùng có thể sử dụng dữ liệu thuộc bất kỳ miền nào (nông sản, giao thông, y tế,...) bằng cách tuân thủ cấu trúc thư mục và định dạng tệp chuẩn dưới đây.
 
 ### 1.1. Cấu trúc thư mục dữ liệu chuẩn
-Tạo một thư mục tên là `data/` ở thư mục gốc của dự án. Đặt tất cả ảnh và các file JSON vào đúng theo cấu trúc sau:
+
+Người dùng cần khởi tạo thư mục `data/` tại thư mục gốc của dự án. Tất cả hình ảnh và tệp nhãn (JSON) phải được tổ chức theo sơ đồ sau:
 
 ```text
 VQA_VI/
 ├── data/
-│   ├── images/              # (1) BỎ TẤT CẢ ẢNH VÀO ĐÂY (KHÔNG CẦN CHIA THƯ MỤC CON)
-│   │   ├── apple_01.jpg
-│   │   ├── banana_02.png
+│   ├── images/              
+│   │   ├── image_001.jpg
+│   │   ├── image_002.png
 │   │   └── ...
-│   ├── train.json           # (2) Tệp dữ liệu dùng để Huấn luyện (80%)
-│   ├── val.json             # (3) Tệp dữ liệu dùng để Xác thực/Đánh giá (10%)
-│   └── test.json            # (4) Tệp dữ liệu Kiểm thử (10%)
+│   ├── train.json           # Dữ liệu huấn luyện (khuyến nghị 80%)
+│   ├── val.json             # Dữ liệu xác thực (khuyến nghị 10%)
+│   └── test.json            # Dữ liệu kiểm thử (khuyến nghị 10%)
 ```
 
-> **Lưu ý:** Code đã được thiết kế thông minh để tự động tìm ảnh. Bạn chỉ việc gom toàn bộ ảnh vứt thẳng vào thư mục `data/images/`.
+**Lưu ý:** Hệ thống có khả năng tự động nội suy đường dẫn tệp ảnh. Người dùng không cần phân chia ảnh thành các thư mục con phức tạp; toàn bộ tệp tin hình ảnh có thể được gom chung vào thư mục `data/images/`.
 
-### 1.2. Định dạng của tệp JSON
-Cả 3 file `train.json`, `val.json`, và `test.json` đều phải tuân thủ nghiêm ngặt cấu trúc mảng JSON gồm các Dictionary như sau:
+### 1.2. Định dạng cấu trúc tệp JSON
+
+Các tệp `train.json`, `val.json`, và `test.json` phải tuân thủ nghiêm ngặt định dạng danh sách (Array) chứa các đối tượng từ điển (Dictionary) như ví dụ sau:
 
 ```json
 [
     {
-        "image_id": "apple_01.jpg",
-        "question": "Trong hình có bao nhiêu quả táo?",
-        "answer": "3 quả"
+        "image_id": "image_001.jpg",
+        "question": "Câu hỏi bằng tiếng Việt có cấu trúc rõ ràng?",
+        "answer": "câu trả lời ngắn gọn"
     },
     {
-        "image_id": "banana_02.png",
-        "question": "Quả chuối có màu gì?",
-        "answer": "màu vàng"
+        "image_id": "image_002.png",
+        "question": "Màu sắc của đối tượng trong hình là gì?",
+        "answer": "màu đỏ"
     }
 ]
 ```
-* **`image_id`**: Tên file ảnh (phải khớp chính xác 100% với tên file trong thư mục `data/images/`).
-* **`question`**: Câu hỏi bằng tiếng Việt.
-* **`answer`**: Câu trả lời ngắn gọn (dưới 10 từ).
+
+* **`image_id`**: Định danh của hình ảnh, bắt buộc phải trùng khớp hoàn toàn (kể cả phần mở rộng tệp) với tên tệp vật lý lưu trong thư mục `data/images/`.
+* **`question`**: Câu truy vấn bằng tiếng Việt liên quan đến nội dung bức ảnh.
+* **`answer`**: Nhãn thực tế (Ground truth) để mô hình học tập, ưu tiên các câu trả lời ngắn gọn gọn (dưới 10 từ).
 
 ---
 
-## 🚀 2. Cài đặt và Môi trường (Setup)
+## 2. Thiết Lập Môi Trường (Setup)
 
-**Cài đặt thư viện:**
+**Cài đặt các gói phụ thuộc:**
 ```bash
 pip install -r requirements.txt
 ```
 
-**Đối với PaliGemma (Hướng B):**
-Do `PaliGemma-3B` là mô hình bảo mật của Google, bạn cần phải:
-1. Đăng nhập vào [Hugging Face](https://huggingface.co/google/paligemma-3b-pt-224) và bấm nút **"Acknowledge license"** để cấp quyền.
-2. Tạo một Access Token (chuỗi mã) tại trang Profile Hugging Face.
-3. Nếu chạy trên Kaggle: Thêm Token đó vào mục **Add-ons -> Secrets** với tên `HF_TOKEN`.
+**Cấp quyền đối với kiến trúc PaliGemma:**
+Kiến trúc PaliGemma (Phiên bản B) thuộc diện mô hình bảo mật (Gated Model) do Google quản lý. Người dùng cần thực hiện các bước sau trước khi tiến hành huấn luyện:
+1. Truy cập [Hugging Face PaliGemma](https://huggingface.co/google/paligemma-3b-pt-224) và chấp thuận điều khoản sử dụng (Acknowledge license).
+2. Khởi tạo Access Token tại mục Settings của tài khoản Hugging Face cá nhân.
+3. Nếu sử dụng Kaggle: Cấu hình biến môi trường bằng cách thêm Access Token vào mục **Add-ons -> Secrets** với định danh là `HF_TOKEN`.
 
 ---
 
-## 🧠 3. Huấn Luyện Mô Hình (Training)
+## 3. Huấn Luyện Mô Hình (Training)
 
-Hệ thống hỗ trợ 4 phiên bản mô hình khác nhau. Bạn có thể chọn huấn luyện phiên bản nào tùy thích. File lưu trữ (checkpoint) sẽ tự động được tạo trong thư mục `checkpoints/`.
+Hệ thống hỗ trợ 4 phiên bản mô hình khác nhau theo kế hoạch thực nghiệm ban đầu. Kết quả huấn luyện (checkpoint) sẽ tự động được ghi nhận tại thư mục `checkpoints/`.
 
 ### 3.1. Hướng A: Kiến trúc Module (ResNet50 + PhoBERT)
-Được thiết kế xây dựng từ đầu (From scratch) cho phần logic gộp.
+Kiến trúc này tách rời quá trình trích xuất đặc trưng hình ảnh và văn bản trước khi thực hiện cơ chế kết hợp (Fusion).
 
-* **A1 - LSTM Decoder:**
+* **Mô hình A1 - LSTM Decoder:**
   ```bash
   python train_modular.py --decoder_type lstm --num_epochs 10
   ```
-* **A2 - Transformer Decoder:**
+* **Mô hình A2 - Transformer Decoder:**
   ```bash
   python train_modular.py --decoder_type transformer --num_epochs 10
   ```
 
-### 3.2. Hướng B: PaliGemma (Google)
-Sử dụng mô hình siêu trí tuệ 11GB của Google, tinh chỉnh siêu nhẹ thông qua **LoRA (PEFT)**.
+### 3.2. Hướng B: PaliGemma (Multimodal Foundation Model)
+Khai thác kiến trúc 3 tỷ tham số của Google, kết hợp kỹ thuật tinh chỉnh tham số hiệu quả (Low-Rank Adaptation - LoRA).
 
-* **B1 - PaliGemma Zero-shot:** (Không cần huấn luyện, chạy thẳng)
-* **B2 - PaliGemma Fine-tuned (LoRA):**
+* **Mô hình B1 - Zero-shot Inference:** Không yêu cầu huấn luyện, mô hình được tải trực tiếp cho bước suy diễn.
+* **Mô hình B2 - LoRA Fine-tuning:**
   ```bash
   python train_paligemma.py
   ```
 
 ---
 
-## 📊 4. Đánh Giá (Evaluation)
+## 4. Đánh Giá Hiệu Suất (Evaluation)
 
-Sau khi huấn luyện xong, bạn có thể chạy file đánh giá để so sánh điểm số giữa các mô hình trên tập `val.json`.
-Hệ thống sẽ đo đạc bằng 3 thang đo chuẩn xác: **Accuracy**, **BLEU**, và **ROUGE-L**.
+Sau khi hoàn tất quá trình huấn luyện, người dùng có thể kích hoạt tập lệnh đánh giá tự động trên tập dữ liệu `val.json`.
+Hệ thống sử dụng 3 bộ tiêu chuẩn đo lường phổ biến: **VQA Accuracy**, **BLEU**, và **ROUGE-L**.
 
 ```bash
 python evaluate_all.py
 ```
-*(Code đánh giá sẽ tự động quét thư mục `checkpoints/` để lấy trọng số mới nhất mà bạn vừa train xong).*
+*(Tập lệnh sẽ tự động xác định và tải tệp trọng số mới nhất từ thư mục `checkpoints/` đối với từng cấu trúc mô hình).*
 
 ---
 
-## 🎨 5. Chạy Ứng Dụng Demo (Gradio App)
+## 5. Triển Khai Giao Diện Thử Nghiệm (Inference)
 
-Bạn có thể mở giao diện đồ họa web để tải ảnh lên và thử nghiệm trực tiếp bằng câu hỏi tiếng Việt. Ứng dụng tích hợp sẵn 4 nút bấm tương ứng với 4 mô hình (A1, A2, B1, B2) để bạn dễ dàng đối chiếu sự thông minh của từng mô hình.
+Giao diện tương tác trực tiếp được xây dựng bằng Gradio, cho phép tải lên hình ảnh vật lý và đặt câu hỏi trực tiếp để đối chiếu chất lượng sinh văn bản giữa các mô hình.
 
 ```bash
 python app.py
 ```
-Sau đó bấm vào đường link `http://127.0.0.1:7860` trên màn hình terminal để sử dụng.
+Sau khi khởi động dịch vụ thành công, truy cập `http://127.0.0.1:7860` thông qua trình duyệt web để bắt đầu phiên thử nghiệm.
