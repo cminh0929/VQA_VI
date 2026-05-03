@@ -7,8 +7,8 @@ class Config:
     if IS_KAGGLE:
         # Kaggle paths
         BASE_DIR = "/kaggle/working"
-        # Assuming you uploaded your data as a Kaggle dataset named 'openvivqa-vietnamese-vqa'
-        DATA_DIR = "/kaggle/input/openvivqa-vietnamese-vqa"
+        # Based on your ls -R output:
+        DATA_DIR = "/kaggle/input/vqa-vn/data"
         CHECKPOINT_DIR = "/kaggle/working/checkpoints"
     else:
         # Local paths
