@@ -5,10 +5,9 @@ class Config:
     IS_KAGGLE = os.path.exists('/kaggle/working')
     
     if IS_KAGGLE:
-        # Kaggle paths
+        # Kaggle pathss
         BASE_DIR = "/kaggle/working"
-        # Based on your ls -R output:
-        DATA_DIR = "/kaggle/input/vqa-vn/data"
+        DATA_DIR = "/kaggle/input/datasets/minhngcng3/vqa-vn/data"
         CHECKPOINT_DIR = "/kaggle/working/checkpoints"
     else:
         # Local paths
