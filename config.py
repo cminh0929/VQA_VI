@@ -28,7 +28,8 @@ class Config:
     
     # Training configs
     BATCH_SIZE_A = 32
-    BATCH_SIZE_B = 4
+    BATCH_SIZE_B = 1
+    GRAD_ACCUM_STEPS = 4
     EPOCHS_A = 10
     EPOCHS_B = 3
     LEARNING_RATE_A = 1e-4

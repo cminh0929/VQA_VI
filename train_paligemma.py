@@ -48,7 +48,7 @@ def train_paligemma():
         total_loss = 0
         pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{config.EPOCHS_B}")
         
-        for batch in pbar:
+        for step, batch in enumerate(pbar):
             # Batch items from data_loader (default_collate groups strings into lists)
             questions = batch['question']
             answers = batch['answer']
@@ -57,14 +57,17 @@ def train_paligemma():
             # Prepare inputs for PaliGemma
             inputs = processor(text=questions, images=images, suffix=answers, return_tensors="pt", padding=True).to(device)
             
-            optimizer.zero_grad()
             outputs = model(**inputs)
-            loss = outputs.loss
+            # Scale loss down by grad_accum_steps
+            loss = outputs.loss / getattr(config, 'GRAD_ACCUM_STEPS', 1)
             loss.backward()
-            optimizer.step()
             
-            total_loss += loss.item()
-            pbar.set_postfix({'loss': loss.item()})
+            if (step + 1) % getattr(config, 'GRAD_ACCUM_STEPS', 1) == 0 or (step + 1) == len(train_loader):
+                optimizer.step()
+                optimizer.zero_grad()
+            
+            total_loss += loss.item() * getattr(config, 'GRAD_ACCUM_STEPS', 1) # Unscale for display
+            pbar.set_postfix({'loss': loss.item() * getattr(config, 'GRAD_ACCUM_STEPS', 1)})
             
         print(f"Epoch {epoch+1} Average Loss: {total_loss / len(train_loader):.4f}")
         
