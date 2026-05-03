@@ -77,13 +77,15 @@ class SpecializedVQADataset(Dataset):
         else:
             labels = answer
 
-        return {
+        res = {
             'image': image,
             'question': question_ids,
-            'attention_mask': attention_mask,
             'answer': labels,
             'original_item': item
         }
+        if attention_mask is not None:
+            res['attention_mask'] = attention_mask
+        return res
 
 def get_transforms(config, is_train=True, normalize=True):
     transforms_list = [A.Resize(config.IMAGE_SIZE, config.IMAGE_SIZE)]
