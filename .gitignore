@@ -29,3 +29,13 @@ access_token
 # Documents
 *.docx
 plan.md
+report.md
+
+# Secrets & Data
+.env
+*.zip
+
+# Local Utils
+download_models.py
+demo_all_models.py
+light_demo.py

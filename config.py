@@ -7,7 +7,7 @@ class Config:
     if IS_KAGGLE:
         # Kaggle paths
         BASE_DIR = "/kaggle/working"
-        DATA_DIR = "/kaggle/input/datasets/minhngcng3/vqa-vn/data"
+        DATA_DIR = "/kaggle/input/datasets/minhngcng3/animal-vqa-vi/data"
         CHECKPOINT_DIR = "/kaggle/working/checkpoints"
     else:
         # Local paths
