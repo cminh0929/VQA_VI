@@ -10,8 +10,7 @@ from config import Config
 import os
 import numpy as np
 from tqdm import tqdm
-
-
+from PIL import Image
 def evaluate_modular(model_path, decoder_type, config, test_loader, device):
     tokenizer = AutoTokenizer.from_pretrained('vinai/phobert-base')
     model = ModularVQA(config, decoder_type=decoder_type, vocab_size=len(tokenizer)).to(device)
