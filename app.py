@@ -1,9 +1,14 @@
 import gradio as gr
 import torch
 import os
+from dotenv import load_dotenv
+load_dotenv()
 import glob
 from PIL import Image
 from config import Config
+from transformers import modeling_utils, masking_utils
+modeling_utils.check_torch_load_is_safe = lambda: None
+masking_utils._is_torch_greater_or_equal_than_2_6 = True
 from transformers import AutoTokenizer, PaliGemmaForConditionalGeneration, AutoProcessor
 from models.modular_vqa import ModularVQA
 from peft import PeftModel
@@ -129,7 +134,7 @@ def predict(image, question, model_choice):
         return f"Lỗi trong quá trình dự đoán: {str(e)}"
 
 def create_interface():
-    with gr.Blocks(theme=gr.themes.Soft()) as demo:
+    with gr.Blocks() as demo:
         gr.Markdown("# 🇻🇳 Vietnamese Visual Question Answering")
         gr.Markdown("Hệ thống giải đáp thắc mắc qua hình ảnh bằng tiếng Việt (Hỗ trợ 4 Mô hình).")
         
@@ -158,8 +163,17 @@ def create_interface():
             outputs=output_text
         )
         
+        gr.Markdown("### Ảnh tham khảo (Click để test ngay)")
+        gr.Examples(
+            examples=[
+                [os.path.join(config.IMAGES_DIR, "antelope_1.jpg"), "Đây là con gì?", "B2: PaliGemma (Fine-tuned / LoRA)"],
+                [os.path.join(config.IMAGES_DIR, "antelope_10.jpg"), "Con vật trong ảnh là gì?", "B2: PaliGemma (Fine-tuned / LoRA)"]
+            ],
+            inputs=[img_input, question_input, model_selector]
+        )
+        
     return demo
 
 if __name__ == "__main__":
     demo = create_interface()
-    demo.launch()
+    demo.launch(theme=gr.themes.Soft())

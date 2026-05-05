@@ -13,7 +13,7 @@ class Config:
         # Local paths
         BASE_DIR = os.path.dirname(os.path.abspath(__file__))
         DATA_DIR = os.path.join(BASE_DIR, "data")
-        CHECKPOINT_DIR = os.path.join(BASE_DIR, "checkpoints")
+        CHECKPOINT_DIR = os.path.join(BASE_DIR, "results", "checkpoints")
 
     IMAGES_DIR = os.path.join(DATA_DIR, "images")
     TRAIN_JSON = os.path.join(DATA_DIR, "train.json")
@@ -21,7 +21,8 @@ class Config:
     TEST_JSON = os.path.join(DATA_DIR, "test.json")
     
     # Model configs
-    MODEL_ID_B = "google/paligemma-3b-pt-224"
+    PHOBERT_PATH = r"D:\phoBERT\phobert-base"
+    MODEL_ID_B = r"D:\paligemma\paligemma-3b-pt-224"
     IMAGE_SIZE = 224
     MAX_ANSWER_LENGTH = 20
     EMBED_SIZE = 768

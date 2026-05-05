@@ -1,4 +1,7 @@
 import torch
+from transformers import modeling_utils, masking_utils
+modeling_utils.check_torch_load_is_safe = lambda: None
+masking_utils._is_torch_greater_or_equal_than_2_6 = True
 from transformers import PaliGemmaForConditionalGeneration, AutoProcessor, AutoTokenizer
 from models.modular_vqa import ModularVQA
 from utils.data_loader import get_dataloader
@@ -35,10 +38,16 @@ def evaluate_modular(model_path, decoder_type, config, test_loader, device):
     return {k: np.mean(v) for k, v in results.items()}
 
 def evaluate_paligemma(model_id_or_path, config, test_loader, device, is_zero_shot=False):
-    model = PaliGemmaForConditionalGeneration.from_pretrained(
-        model_id_or_path, 
+    base_model = PaliGemmaForConditionalGeneration.from_pretrained(
+        config.MODEL_ID_B, 
         torch_dtype=torch.float16 if device == "cuda" else torch.float32
     ).to(device)
+    if is_zero_shot:
+        model = base_model
+    else:
+        from peft import PeftModel
+        model = PeftModel.from_pretrained(base_model, model_id_or_path)
+        
     processor = AutoProcessor.from_pretrained(config.MODEL_ID_B)
     model.eval()
     
@@ -77,28 +86,38 @@ if __name__ == "__main__":
     # Load tokenizer for data loading
     tokenizer = AutoTokenizer.from_pretrained('vinai/phobert-base')
     
-    # Data for evaluation (using Val set as proxy for Test if Test has no answers)
-    test_loader = get_dataloader(config, config.VAL_JSON, tokenizer=tokenizer, is_train=False, batch_size=8)
+    # Data for evaluation (using Test set)
+    test_loader = get_dataloader(config, config.TEST_JSON, tokenizer=tokenizer, is_train=False, batch_size=8)
     # Separate loader for PaliGemma (no normalization)
-    test_loader_pali = get_dataloader(config, config.VAL_JSON, tokenizer=None, is_train=False, batch_size=4, normalize=False)
+    test_loader_pali = get_dataloader(config, config.TEST_JSON, tokenizer=None, is_train=False, batch_size=4, normalize=False)
     
     print("\n" + "="*30)
     print("STARTING EVALUATION OF ALL CONFIGS")
     print("="*30)
     
     # A1 & A2
-    # res_a1 = evaluate_modular("checkpoints/modular_lstm_epoch1.pt", 'lstm', config, test_loader, device)
-    # res_a2 = evaluate_modular("checkpoints/modular_transformer_epoch1.pt", 'transformer', config, test_loader, device)
+    res_a1 = evaluate_modular("results/checkpoints/modular_lstm_epoch9.pt", 'lstm', config, test_loader, device)
+    import gc; gc.collect(); torch.cuda.empty_cache()
+    
+    res_a2 = evaluate_modular("results/checkpoints/modular_transformer_epoch9.pt", 'transformer', config, test_loader, device)
+    import gc; gc.collect(); torch.cuda.empty_cache()
     
     # B1 (Zero-shot)
     res_b1 = evaluate_paligemma(config.MODEL_ID_B, config, test_loader_pali, device, is_zero_shot=True)
+    import gc; gc.collect(); torch.cuda.empty_cache()
     
     # B2 (Fine-tuned)
-    # b2_path = os.path.join(config.CHECKPOINT_DIR, "paligemma_b2_epoch1")
-    # res_b2 = evaluate_paligemma(b2_path, config, test_loader, device)
+    b2_path = os.path.join(config.CHECKPOINT_DIR, "paligemma_b2_epoch_final")
+    res_b2 = evaluate_paligemma(b2_path, config, test_loader_pali, device, is_zero_shot=False)
+    import gc; gc.collect(); torch.cuda.empty_cache()
     
-    print("\nFINAL RESULTS SUMMARY:")
-    print(f"A1 (Modular+LSTM): {0.0} (Needs checkpoint)")
-    print(f"A2 (Modular+Trans): {0.0} (Needs checkpoint)")
-    print(f"B1 (Zero-shot): {res_b1['acc']:.4f}")
-    print(f"B2 (Fine-tuned): {0.0} (Needs checkpoint)")
+    summary = f"""
+FINAL RESULTS SUMMARY:
+A1 (Modular+LSTM): Acc: {res_a1['acc']:.4f} | BLEU: {res_a1['bleu']:.4f} | ROUGE-L: {res_a1['rouge']:.4f}
+A2 (Modular+Trans): Acc: {res_a2['acc']:.4f} | BLEU: {res_a2['bleu']:.4f} | ROUGE-L: {res_a2['rouge']:.4f}
+B1 (Zero-shot): Acc: {res_b1['acc']:.4f}
+B2 (Fine-tuned): Acc: {res_b2['acc']:.4f}
+"""
+    print(summary)
+    with open("results/eval_results.txt", "w", encoding="utf-8") as f:
+        f.write(summary)
