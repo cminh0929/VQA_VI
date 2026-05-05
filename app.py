@@ -3,7 +3,6 @@ import torch
 import os
 from dotenv import load_dotenv
 load_dotenv()
-import glob
 from PIL import Image
 from config import Config
 from transformers import modeling_utils, masking_utils
@@ -12,7 +11,6 @@ masking_utils._is_torch_greater_or_equal_than_2_6 = True
 from transformers import AutoTokenizer, PaliGemmaForConditionalGeneration, AutoProcessor
 from models.modular_vqa import ModularVQA
 from peft import PeftModel
-import numpy as np
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 

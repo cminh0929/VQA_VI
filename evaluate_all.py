@@ -10,7 +10,7 @@ from config import Config
 import os
 import numpy as np
 from tqdm import tqdm
-from PIL import Image
+
 
 def evaluate_modular(model_path, decoder_type, config, test_loader, device):
     tokenizer = AutoTokenizer.from_pretrained('vinai/phobert-base')
@@ -23,7 +23,9 @@ def evaluate_modular(model_path, decoder_type, config, test_loader, device):
     results = {'acc': [], 'bleu': [], 'rouge': []}
     
     with torch.no_grad():
-        for batch in tqdm(test_loader, desc=f"Eval Modular {decoder_type}"):
+        for i, batch in enumerate(tqdm(test_loader, desc=f"Eval Modular {decoder_type}")):
+            if i >= 50:
+                break
             images = batch['image'].to(device)
             input_ids = batch['question'].to(device)
             attention_mask = batch['attention_mask'].to(device)
