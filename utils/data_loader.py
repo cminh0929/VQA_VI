@@ -22,6 +22,15 @@ class VQADataset(Dataset):
             
         if limit:
             self.data = self.data[:limit]
+
+        # Pre-process word segmentation once to save CPU during training
+        print(f"Pre-processing word segmentation for {len(self.data)} items...")
+        for item in self.data:
+            item['question'] = self._preprocess_text(item['question'])
+            if 'answers' in item and isinstance(item['answers'], list):
+                item['answers'] = [self._preprocess_text(a) for a in item['answers']]
+            if 'answer' in item:
+                item['answer'] = self._preprocess_text(item['answer'])
             
         # Direction A uses PhoBERT Tokenizer, Direction B uses BlipProcessor
         self.tokenizer = tokenizer
@@ -74,18 +83,15 @@ class VQADataset(Dataset):
         else:
             image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             
-        # Text Preprocessing
-        question = self._preprocess_text(item['question'])
+        # Text already preprocessed in __init__
+        question = item['question']
         
-        # Handle 'answers' list from final.json structure
         if 'answers' in item and isinstance(item['answers'], list) and len(item['answers']) > 0:
-            # For training, we can take the first answer or a random one. 
-            # Taking the first one for consistency.
             raw_answer = item['answers'][0]
         else:
             raw_answer = item.get('answer', "")
             
-        answer = self._preprocess_text(raw_answer)
+        answer = raw_answer
         
         # Category Handling
         cat_to_id = {
@@ -168,6 +174,7 @@ def get_dataloader(config, json_path, direction='A', is_train=True, batch_size=N
             dataset, 
             batch_size=batch_size or config.BATCH_SIZE_A, 
             shuffle=is_train,
+            num_workers=2,
             collate_fn=modular_collate_fn
         )
     else:
@@ -177,5 +184,6 @@ def get_dataloader(config, json_path, direction='A', is_train=True, batch_size=N
             dataset, 
             batch_size=batch_size or config.BATCH_SIZE_B, 
             shuffle=is_train,
+            num_workers=2,
             collate_fn=lambda b: blip_collate_fn(b, processor)
         )
