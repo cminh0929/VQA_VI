@@ -12,7 +12,7 @@ import torch.nn as nn
 print('NN IMPORTED', file=sys.stderr)
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-from tqdm import tqdm
+from tqdm.auto import tqdm
 import os
 import ssl
 from config import Config

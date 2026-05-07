@@ -1,6 +1,6 @@
 import torch
 from torch.optim import AdamW
-from tqdm import tqdm
+from tqdm.auto import tqdm
 import os
 from config import Config
 from models.blip_vqa import BlipVQAModel
