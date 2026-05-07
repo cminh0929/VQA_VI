@@ -1,8 +1,16 @@
-import torch
-from transformers import modeling_utils, masking_utils
+import transformers.utils.import_utils as import_utils
+import transformers.modeling_utils as modeling_utils
+# Monkey patch to bypass security check for torch.load (CVE-2025-32434)
+# Required to load PhoBERT weights from local 'weight' directory in this environment.
+import_utils.check_torch_load_is_safe = lambda: None
 modeling_utils.check_torch_load_is_safe = lambda: None
-masking_utils._is_torch_greater_or_equal_than_2_6 = True
-from transformers import PaliGemmaForConditionalGeneration, AutoProcessor, AutoTokenizer
+
+import sys
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+
+import torch
+from transformers import AutoTokenizer, BlipProcessor, BlipForConditionalGeneration
 from models.modular_vqa import ModularVQA
 from utils.data_loader import get_dataloader
 from utils.metrics import VQAMetrics
@@ -11,114 +19,122 @@ import os
 import numpy as np
 from tqdm import tqdm
 from PIL import Image
+
 def evaluate_modular(model_path, decoder_type, config, test_loader, device):
-    tokenizer = AutoTokenizer.from_pretrained('vinai/phobert-base')
-    model = ModularVQA(config, decoder_type=decoder_type, vocab_size=len(tokenizer)).to(device)
+    tokenizer = AutoTokenizer.from_pretrained("weight")
+    model = ModularVQA(config, vocab_size=len(tokenizer), decoder_type=decoder_type).to(device)
     if os.path.exists(model_path):
         model.load_state_dict(torch.load(model_path, map_location=device))
     model.eval()
     
     metrics_calc = VQAMetrics(tokenizer)
-    results = {'acc': [], 'bleu': [], 'rouge': []}
+    preds, gts = [], []
     
     with torch.no_grad():
-        for i, batch in enumerate(tqdm(test_loader, desc=f"Eval Modular {decoder_type}")):
-            if i >= 50:
-                break
+        for batch in tqdm(test_loader, desc=f"Eval Modular {decoder_type}"):
             images = batch['image'].to(device)
-            input_ids = batch['question'].to(device)
+            input_ids = batch['input_ids'].to(device)
             attention_mask = batch['attention_mask'].to(device)
-            target_ids = batch['answer'].to(device)
+            category_id = batch['category_id'].to(device)
+            target_ids = batch['labels'].to(device)
             
-            logits = model(images, input_ids, attention_mask)
-            m = metrics_calc.compute_batch_metrics(logits, target_ids)
-            results['acc'].append(m['accuracy'])
-            results['bleu'].append(m['bleu'])
-            results['rouge'].append(m['rougeL'])
+            logits = model(images, input_ids, attention_mask, category_id)
             
-    return {k: np.mean(v) for k, v in results.items()}
+            # Simple greedy decode for evaluation
+            batch_preds = logits.argmax(-1)
+            decoded_preds = tokenizer.batch_decode(batch_preds, skip_special_tokens=True)
+            
+            preds.extend(decoded_preds)
+            gts.extend(batch['answers_raw'])
+            
+    results = metrics_calc.compute_batch_metrics(preds, gts)
+    print(f"\n--- [DEBUG Modular {decoder_type}] Sample Preds: {preds[:3]}")
+    # Print first few token IDs of the first prediction
+    with torch.no_grad():
+        token_ids = logits[0].argmax(-1).tolist()
+        print(f"--- [DEBUG Modular {decoder_type}] Token IDs (Sample 0): {token_ids}")
+    print(f"--- [DEBUG Modular {decoder_type}] Sample GTs: {gts[:3]}")
+    return results
 
-def evaluate_paligemma(model_id_or_path, config, test_loader, device, is_zero_shot=False):
-    base_model = PaliGemmaForConditionalGeneration.from_pretrained(
-        config.MODEL_ID_B, 
-        torch_dtype=torch.float16 if device == "cuda" else torch.float32
-    ).to(device)
+def evaluate_blip(model_id_or_path, config, test_loader, device, is_zero_shot=False):
     if is_zero_shot:
-        model = base_model
+        model = BlipForConditionalGeneration.from_pretrained(
+            config.BLIP_MODEL_ID, 
+            torch_dtype=torch.float16 if device == "cuda" else torch.float32
+        ).to(device)
     else:
         from peft import PeftModel
+        base_model = BlipForConditionalGeneration.from_pretrained(
+            config.BLIP_MODEL_ID, 
+            torch_dtype=torch.float16 if device == "cuda" else torch.float32
+        ).to(device)
         model = PeftModel.from_pretrained(base_model, model_id_or_path)
         
-    processor = AutoProcessor.from_pretrained(config.MODEL_ID_B)
+    processor = BlipProcessor.from_pretrained(config.BLIP_MODEL_ID)
     model.eval()
     
-    # We use basic accuracy for PaliGemma here (text comparison)
-    correct = 0
-    total = 0
+    metrics_calc = VQAMetrics()
+    preds, gts = [], []
     
     with torch.no_grad():
-        for batch in tqdm(test_loader, desc=f"Eval PaliGemma {'Zero-shot' if is_zero_shot else 'Fine-tuned'}"):
-            questions = batch['question']
-            answers = batch['answer']
-            images = [Image.fromarray(img.numpy().transpose(1, 2, 0).astype('uint8')) for img in batch['image']]
+        for batch in tqdm(test_loader, desc=f"Eval BLIP {'Zero-shot' if is_zero_shot else 'Fine-tuned'}"):
+            images = batch['pixel_values'].to(device, dtype=torch.float16 if device == "cuda" else torch.float32)
+            input_ids = batch['input_ids'].to(device)
             
-            inputs = processor(text=questions, images=images, return_tensors="pt", padding=True).to(device)
-            input_len = inputs['input_ids'].shape[1]
-            output_tokens = model.generate(**inputs, max_new_tokens=20)
+            output_tokens = model.generate(pixel_values=images, input_ids=input_ids, max_new_tokens=config.MAX_ANSWER_LENGTH)
+            decoded = processor.batch_decode(output_tokens, skip_special_tokens=True)
             
-            # Extract only the generated part (strip prompt tokens)
-            generated_tokens = output_tokens[:, input_len:]
-            decoded = processor.batch_decode(generated_tokens, skip_special_tokens=True)
-            
-            for pred, gt in zip(decoded, answers):
-                # Simple normalization
-                p = pred.strip().lower()
-                g = gt.strip().lower()
-                if p == g:  # Exact match
-                    correct += 1
-                total += 1
+            preds.extend(decoded)
+            # Use all reference answers for accurate evaluation
+            gts.extend(batch['answers_raw'])
                 
-    return {'acc': correct / total if total > 0 else 0}
+    results = metrics_calc.compute_batch_metrics(preds, gts)
+    print(f"\n--- [DEBUG BLIP] Sample Preds: {preds[:3]}")
+    print(f"--- [DEBUG BLIP] Sample GTs: {gts[:3]}")
+    return results
 
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--debug", action="store_true", help="Run with small subset of data")
+    args = parser.parse_args()
+    
     config = Config()
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = config.DEVICE
     
-    # Load tokenizer for data loading
-    tokenizer = AutoTokenizer.from_pretrained('vinai/phobert-base')
+    test_limit = 3 if args.debug else None
     
-    # Data for evaluation (using Test set)
-    test_loader = get_dataloader(config, config.TEST_JSON, tokenizer=tokenizer, is_train=False, batch_size=8)
-    # Separate loader for PaliGemma (no normalization)
-    test_loader_pali = get_dataloader(config, config.TEST_JSON, tokenizer=None, is_train=False, batch_size=4, normalize=False)
+    # Loaders
+    test_loader_a = get_dataloader(config, config.TEST_JSON, direction='A', is_train=False, batch_size=8, limit=test_limit)
+    test_loader_b = get_dataloader(config, config.TEST_JSON, direction='B', is_train=False, batch_size=4, limit=test_limit)
     
-    print("\n" + "="*30)
-    print("STARTING EVALUATION OF ALL CONFIGS")
-    print("="*30)
+    print("\n" + "="*40)
+    print("STARTING EVALUATION OF ALL 4 CONFIGURATIONS")
+    print("="*40)
     
     # A1 & A2
-    res_a1 = evaluate_modular("results/checkpoints/modular_lstm_epoch9.pt", 'lstm', config, test_loader, device)
-    import gc; gc.collect(); torch.cuda.empty_cache()
+    path_a1 = os.path.join(config.CHECKPOINT_DIR, "modular_lstm_epoch10.pt")
+    res_a1 = evaluate_modular(path_a1, 'lstm', config, test_loader_a, device) if os.path.exists(path_a1) else {"accuracy": 0, "bleu": 0, "rougeL": 0}
     
-    res_a2 = evaluate_modular("results/checkpoints/modular_transformer_epoch9.pt", 'transformer', config, test_loader, device)
-    import gc; gc.collect(); torch.cuda.empty_cache()
+    path_a2 = os.path.join(config.CHECKPOINT_DIR, "modular_transformer_epoch10.pt")
+    res_a2 = evaluate_modular(path_a2, 'transformer', config, test_loader_a, device) if os.path.exists(path_a2) else {"accuracy": 0, "bleu": 0, "rougeL": 0}
     
     # B1 (Zero-shot)
-    res_b1 = evaluate_paligemma(config.MODEL_ID_B, config, test_loader_pali, device, is_zero_shot=True)
-    import gc; gc.collect(); torch.cuda.empty_cache()
+    res_b1 = evaluate_blip(config.BLIP_MODEL_ID, config, test_loader_b, device, is_zero_shot=True)
     
     # B2 (Fine-tuned)
-    b2_path = os.path.join(config.CHECKPOINT_DIR, "paligemma_b2_epoch_final")
-    res_b2 = evaluate_paligemma(b2_path, config, test_loader_pali, device, is_zero_shot=False)
-    import gc; gc.collect(); torch.cuda.empty_cache()
+    path_b2 = os.path.join(config.CHECKPOINT_DIR, "blip_lora_epoch10")
+    res_b2 = evaluate_blip(path_b2, config, test_loader_b, device, is_zero_shot=False) if os.path.exists(path_b2) else {"accuracy": 0, "bleu": 0, "rougeL": 0}
     
     summary = f"""
-FINAL RESULTS SUMMARY:
-A1 (Modular+LSTM): Acc: {res_a1['acc']:.4f} | BLEU: {res_a1['bleu']:.4f} | ROUGE-L: {res_a1['rouge']:.4f}
-A2 (Modular+Trans): Acc: {res_a2['acc']:.4f} | BLEU: {res_a2['bleu']:.4f} | ROUGE-L: {res_a2['rouge']:.4f}
-B1 (Zero-shot): Acc: {res_b1['acc']:.4f}
-B2 (Fine-tuned): Acc: {res_b2['acc']:.4f}
+FINAL RESULTS SUMMARY (Vietnamese VQA):
+--------------------------------------------------
+A1 (Modular + LSTM):        Acc: {res_a1['accuracy']:.4f} | BLEU: {res_a1['bleu']:.4f} | ROUGE: {res_a1['rougeL']:.4f}
+A2 (Modular + Transformer): Acc: {res_a2['accuracy']:.4f} | BLEU: {res_a2['bleu']:.4f} | ROUGE: {res_a2['rougeL']:.4f}
+B1 (BLIP Zero-shot):       Acc: {res_b1['accuracy']:.4f} | BLEU: {res_b1['bleu']:.4f} | ROUGE: {res_b1['rougeL']:.4f}
+B2 (BLIP Fine-tuned):      Acc: {res_b2['accuracy']:.4f} | BLEU: {res_b2['bleu']:.4f} | ROUGE: {res_b2['rougeL']:.4f}
+--------------------------------------------------
 """
     print(summary)
-    with open("results/eval_results.txt", "w", encoding="utf-8") as f:
+    with open("results/eval_summary.txt", "w", encoding="utf-8") as f:
         f.write(summary)

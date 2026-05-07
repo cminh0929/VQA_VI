@@ -1,41 +1,54 @@
 import os
 
 class Config:
-    # Check if running on Kaggle
-    IS_KAGGLE = os.path.exists('/kaggle/working')
-    
-    if IS_KAGGLE:
-        # Kaggle paths
-        BASE_DIR = "/kaggle/working"
-        DATA_DIR = "/kaggle/input/datasets/minhngcng3/animal-vqa-vi/data"
-        CHECKPOINT_DIR = "/kaggle/working/checkpoints"
-    else:
-        # Local paths
-        BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-        DATA_DIR = os.path.join(BASE_DIR, "data")
-        CHECKPOINT_DIR = os.path.join(BASE_DIR, "results", "checkpoints")
-
+    # --- Paths ---
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    DATA_DIR = os.path.join(BASE_DIR, "data")
     IMAGES_DIR = os.path.join(DATA_DIR, "images")
-    TRAIN_JSON = os.path.join(DATA_DIR, "train.json")
-    VAL_JSON = os.path.join(DATA_DIR, "val.json")
-    TEST_JSON = os.path.join(DATA_DIR, "test.json")
     
-    # Model configs
-    PHOBERT_PATH = r"D:\phoBERT\phobert-base"
-    MODEL_ID_B = r"D:\paligemma\paligemma-3b-pt-224"
-    IMAGE_SIZE = 224
-    MAX_ANSWER_LENGTH = 20
+    TRAIN_JSON = os.path.join(DATA_DIR, "train_final.json")
+    VAL_JSON = os.path.join(DATA_DIR, "val_final.json")
+    TEST_JSON = os.path.join(DATA_DIR, "test_final.json")
+    
+    CHECKPOINT_DIR = os.path.join(BASE_DIR, "results", "checkpoints")
+    LOG_DIR = os.path.join(BASE_DIR, "results", "logs")
+    
+    # --- Model Configs (Common) ---
+    DEVICE = "cuda" if os.environ.get("CUDA_VISIBLE_DEVICES") != "-1" else "cpu"
+    MAX_QUESTION_LENGTH = 128
+    MAX_ANSWER_LENGTH = 10  # Based on plan requirement
+    
+    # --- Direction A (Modular) ---
+    IMAGE_ENCODER = "resnet50" # resnet50, vit_base_patch16_224
+    TEXT_ENCODER = "vinai/phobert-base"
+    MODULAR_IMAGE_SIZE = 224
     EMBED_SIZE = 768
+    HIDDEN_SIZE = 512
+    NUM_CATEGORIES = 6
     
-    # Training configs
+    # --- Direction B (Multimodal) ---
+    BLIP_MODEL_ID = "Salesforce/blip-vqa-base"
+    MULTIMODAL_IMAGE_SIZE = 384
+    
+    # --- Training Configs ---
     BATCH_SIZE_A = 32
-    BATCH_SIZE_B = 1
-    GRAD_ACCUM_STEPS = 4
-    EPOCHS_A = 10
-    EPOCHS_B = 3
+    BATCH_SIZE_B = 8
+    EPOCHS = 10
     LEARNING_RATE_A = 1e-4
     LEARNING_RATE_B = 2e-5
+    WEIGHT_DECAY = 0.01
     
-    # LoRA configs
-    LORA_R = 8
+    # --- LoRA Configs (for BLIP) ---
+    LORA_R = 16
     LORA_ALPHA = 32
+    LORA_DROPOUT = 0.05
+    LORA_TARGET_MODULES = ["query", "key", "value", "dense"]
+
+    @classmethod
+    def ensure_dirs(cls):
+        for d in [cls.CHECKPOINT_DIR, cls.LOG_DIR, cls.IMAGES_DIR]:
+            os.makedirs(d, exist_ok=True)
+
+if __name__ == "__main__":
+    Config.ensure_dirs()
+    print("Project directories initialized.")

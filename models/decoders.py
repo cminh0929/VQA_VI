@@ -2,78 +2,93 @@ import torch
 import torch.nn as nn
 
 class LSTMDecoder(nn.Module):
-    def __init__(self, input_dim, hidden_dim, vocab_size, fused_dim=1024, num_layers=1):
-        super(LSTMDecoder, self).__init__()
-        self.hidden_dim = hidden_dim
-        self.embedding = nn.Embedding(vocab_size, input_dim)
+    def __init__(self, vocab_size, embed_size, hidden_size, max_answer_length=10, num_layers=1):
+        super().__init__()
+        self.vocab_size = vocab_size
+        self.max_answer_length = max_answer_length
+        self.embedding = nn.Embedding(vocab_size, embed_size)
+        self.lstm = nn.LSTM(embed_size, hidden_size, num_layers, batch_first=True)
         
-        # LSTM input: word embedding
-        self.lstm = nn.LSTM(input_dim, hidden_dim, num_layers, batch_first=True)
-        self.fc = nn.Linear(hidden_dim, vocab_size)
+        # Stability: Projection from fused features to LSTM hidden state
+        self.init_h = nn.Linear(embed_size, hidden_size)
+        self.init_c = nn.Linear(embed_size, hidden_size)
         
-        # Layers to initialize hidden and cell states from fused features
-        self.init_h = nn.Linear(fused_dim, hidden_dim)
-        self.init_c = nn.Linear(fused_dim, hidden_dim)
-        
-    def forward(self, fused_features, target_ids=None, max_len=10, teacher_forcing_ratio=0.5):
-        batch_size = fused_features.size(0)
-        device = fused_features.device
-        
-        # Initialize hidden state from fused_features
-        h = self.init_h(fused_features).unsqueeze(0) # [num_layers, batch, hidden_dim]
-        c = self.init_c(fused_features).unsqueeze(0)
-        
-        # Start token (Assuming 0 for PhoBERT/Skeleton, adjust based on actual tokenizer)
-        input_id = torch.zeros(batch_size, 1).long().to(device)
-        
-        outputs = []
-        for t in range(max_len):
-            embedded = self.embedding(input_id) # [batch, 1, input_dim]
-            output, (h, c) = self.lstm(embedded, (h, c))
-            logits = self.fc(output.squeeze(1)) # [batch, vocab_size]
-            outputs.append(logits)
-            
-            if target_ids is not None and t < target_ids.size(1) and self.training and torch.rand(1).item() < teacher_forcing_ratio:
-                input_id = target_ids[:, t].unsqueeze(1)
-            else:
-                input_id = logits.argmax(1).unsqueeze(1)
-                
-        return torch.stack(outputs, dim=1)
+        self.fc = nn.Linear(hidden_size, vocab_size)
 
-class TransformerDecoder(nn.Module):
-    def __init__(self, input_dim, hidden_dim, vocab_size, fused_dim=1024, nhead=8, num_layers=2):
-        super(TransformerDecoder, self).__init__()
-        self.embedding = nn.Embedding(vocab_size, hidden_dim)
-        self.pos_encoder = nn.Parameter(torch.zeros(1, 100, hidden_dim)) # Simple positional encoding
-        
-        self.decoder_layer = nn.TransformerDecoderLayer(d_model=hidden_dim, nhead=nhead, batch_first=True)
-        self.transformer_decoder = nn.TransformerDecoder(self.decoder_layer, num_layers=num_layers)
-        self.fc = nn.Linear(hidden_dim, vocab_size)
-        
-        # Map fused_features to hidden_dim for memory input
-        self.memory_proj = nn.Linear(fused_dim, hidden_dim)
-        
-    def forward(self, fused_features, target_ids=None, max_len=10):
+    def forward(self, fused_features, target_ids=None):
+        # fused_features: [batch, embed_size]
         batch_size = fused_features.size(0)
-        device = fused_features.device
         
-        # Memory is the fused image+text features
-        memory = self.memory_proj(fused_features).unsqueeze(1) # [batch, 1, hidden_dim]
+        # Correct Initialization
+        h0 = self.init_h(fused_features).unsqueeze(0) # [num_layers, batch, hidden_size]
+        c0 = self.init_c(fused_features).unsqueeze(0)
         
         if target_ids is not None:
-            # Training with teacher forcing (standard Transformer)
-            tgt = self.embedding(target_ids) + self.pos_encoder[:, :target_ids.size(1), :]
-            output = self.transformer_decoder(tgt, memory)
+            # Training: Standard Teacher Forcing
+            embeddings = self.embedding(target_ids)
+            outputs, _ = self.lstm(embeddings, (h0, c0))
+            return self.fc(outputs)
+        else:
+            # Inference: Greedy with BOS handling
+            device = fused_features.device
+            max_len = self.max_answer_length
+            # Note: PhoBERT <s> is index 0
+            curr_token = torch.zeros((batch_size, 1), dtype=torch.long, device=device)
+            h, c = h0, c0
+            
+            all_logits = []
+            for _ in range(max_len):
+                emb = self.embedding(curr_token)
+                out, (h, c) = self.lstm(emb, (h, c))
+                logits = self.fc(out)
+                all_logits.append(logits)
+                curr_token = logits.argmax(-1)
+                
+            return torch.cat(all_logits, dim=1)
+
+class TransformerDecoder(nn.Module):
+    def __init__(self, vocab_size, embed_size, max_answer_length=10, num_heads=8, num_layers=3):
+        super().__init__()
+        self.max_answer_length = max_answer_length
+        self.embedding = nn.Embedding(vocab_size, embed_size)
+        
+        # Standard Transformer Decoder Layer
+        decoder_layer = nn.TransformerDecoderLayer(
+            d_model=embed_size, 
+            nhead=num_heads, 
+            batch_first=True,
+            dim_feedforward=embed_size * 4,
+            dropout=0.1
+        )
+        self.transformer_decoder = nn.TransformerDecoder(decoder_layer, num_layers=num_layers)
+        self.fc = nn.Linear(embed_size, vocab_size)
+
+    def forward(self, memory, target_ids=None):
+        """
+        memory: [batch, seq_len, embed_size] - Sequence of visual+textual features
+        """
+        batch_size = memory.size(0)
+        device = memory.device
+        
+        if target_ids is not None:
+            tgt = self.embedding(target_ids)
+            # Create causal mask for target
+            tgt_mask = nn.Transformer.generate_square_subsequent_mask(tgt.size(1), device=device)
+            output = self.transformer_decoder(tgt, memory, tgt_mask=tgt_mask)
             return self.fc(output)
         else:
-            # Inference (Greedy)
-            curr_input = torch.zeros(batch_size, 1).long().to(device)
-            outputs = []
-            for t in range(max_len):
-                tgt = self.embedding(curr_input) + self.pos_encoder[:, :curr_input.size(1), :]
-                out = self.transformer_decoder(tgt, memory)
-                logits = self.fc(out[:, -1, :]) # Take last token
-                next_token = logits.argmax(1).unsqueeze(1)
-                curr_input = torch.cat([curr_input, next_token], dim=1)
-                outputs.append(logits)
-            return torch.stack(outputs, dim=1)
+            # Robust Greedy decoding - collect logits at each step
+            max_len = self.max_answer_length
+            curr_tokens = torch.zeros((batch_size, 1), dtype=torch.long, device=device) # <s> token
+            
+            all_logits = []
+            for _ in range(max_len):
+                tgt = self.embedding(curr_tokens)
+                tgt_mask = nn.Transformer.generate_square_subsequent_mask(tgt.size(1), device=device)
+                out = self.transformer_decoder(tgt, memory, tgt_mask=tgt_mask)
+                next_token_logits = self.fc(out[:, -1:, :])
+                all_logits.append(next_token_logits)
+                next_token = next_token_logits.argmax(-1)
+                curr_tokens = torch.cat([curr_tokens, next_token], dim=1)
+                
+            return torch.cat(all_logits, dim=1)

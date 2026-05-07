@@ -1,177 +1,114 @@
 import gradio as gr
 import torch
-import os
-from dotenv import load_dotenv
-load_dotenv()
 from PIL import Image
 from config import Config
-from transformers import modeling_utils, masking_utils
-modeling_utils.check_torch_load_is_safe = lambda: None
-masking_utils._is_torch_greater_or_equal_than_2_6 = True
-from transformers import AutoTokenizer, PaliGemmaForConditionalGeneration, AutoProcessor
 from models.modular_vqa import ModularVQA
+from models.blip_vqa import BlipVQAModel
+from transformers import AutoTokenizer, BlipForConditionalGeneration, BlipProcessor
 from peft import PeftModel
+import os
+import numpy as np
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
+from underthesea import word_tokenize
 
 config = Config()
-device = "cuda" if torch.cuda.is_available() else "cpu"
+device = config.DEVICE
 
-# --- Caches ---
-_modular_tokenizer = None
-_paligemma_processor = None
-_loaded_models = {}
+# --- Cache ---
+_models = {}
+_tokenizers = {}
+_processors = {}
 
-_transform = A.Compose([
-    A.Resize(config.IMAGE_SIZE, config.IMAGE_SIZE),
-    A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-    ToTensorV2(),
-])
-
-def _find_latest_checkpoint(prefix):
-    # Find the latest epoch checkpoint matching prefix in CHECKPOINT_DIR
-    files = glob.glob(os.path.join(config.CHECKPOINT_DIR, f"{prefix}*"))
-    if not files:
-        return None
-    # Sort to try to get the latest epoch if possible
-    files.sort(key=os.path.getmtime, reverse=True)
-    return files[0]
-
-def _get_modular_model(decoder_type):
-    global _modular_tokenizer
+def get_modular_model(decoder_type):
     model_key = f"modular_{decoder_type}"
-    
-    if model_key in _loaded_models:
-        return _loaded_models[model_key], _modular_tokenizer
-        
-    if _modular_tokenizer is None:
-        _modular_tokenizer = AutoTokenizer.from_pretrained('vinai/phobert-base')
-        
-    model = ModularVQA(config, decoder_type=decoder_type, vocab_size=len(_modular_tokenizer)).to(device)
-    
-    ckpt = _find_latest_checkpoint(f"modular_{decoder_type}_epoch")
-    if ckpt and os.path.exists(ckpt):
-        model.load_state_dict(torch.load(ckpt, map_location=device))
-        print(f"Successfully loaded {model_key} checkpoint: {ckpt}")
-    else:
-        print(f"Warning: No checkpoint found for {model_key}. Using uninitialized weights.")
-        
-    model.eval()
-    _loaded_models[model_key] = model
-    return model, _modular_tokenizer
+    if model_key not in _models:
+        tokenizer = AutoTokenizer.from_pretrained("weight")
+        model = ModularVQA(config, vocab_size=len(tokenizer), decoder_type=decoder_type).to(device)
+        path = os.path.join(config.CHECKPOINT_DIR, f"modular_{decoder_type}_epoch10.pt")
+        if os.path.exists(path):
+            model.load_state_dict(torch.load(path, map_location=device))
+        model.eval()
+        _models[model_key] = model
+        _tokenizers[model_key] = tokenizer
+    return _models[model_key], _tokenizers[model_key]
 
-def _get_paligemma_model(is_finetuned):
-    global _paligemma_processor
-    model_key = "paligemma_finetuned" if is_finetuned else "paligemma_zeroshot"
-    
-    if model_key in _loaded_models:
-        return _loaded_models[model_key], _paligemma_processor
-        
-    if _paligemma_processor is None:
-        _paligemma_processor = AutoProcessor.from_pretrained(config.MODEL_ID_B)
-        
-    base_model = PaliGemmaForConditionalGeneration.from_pretrained(
-        config.MODEL_ID_B,
-        torch_dtype=torch.float16 if device == 'cuda' else torch.float32
-    ).to(device)
-    
-    if is_finetuned:
-        ckpt = _find_latest_checkpoint("paligemma_b2_epoch")
-        if ckpt and os.path.exists(ckpt):
-            model = PeftModel.from_pretrained(base_model, ckpt)
-            print(f"Successfully loaded {model_key} LoRA checkpoint: {ckpt}")
+def get_blip_model(is_finetuned=True):
+    model_key = "blip_ft" if is_finetuned else "blip_zs"
+    if model_key not in _models:
+        processor = BlipProcessor.from_pretrained(config.BLIP_MODEL_ID)
+        if is_finetuned:
+            base = BlipForConditionalGeneration.from_pretrained(config.BLIP_MODEL_ID).to(device)
+            path = os.path.join(config.CHECKPOINT_DIR, "blip_lora_epoch10")
+            if os.path.exists(path):
+                model = PeftModel.from_pretrained(base, path)
+            else:
+                model = base
         else:
-            print(f"Warning: No LoRA checkpoint found. Falling back to base model.")
-            model = base_model
-    else:
-        model = base_model
-        
-    model.eval()
-    _loaded_models[model_key] = model
-    return model, _paligemma_processor
+            model = BlipForConditionalGeneration.from_pretrained(config.BLIP_MODEL_ID).to(device)
+        model.eval()
+        _models[model_key] = model
+        _processors[model_key] = processor
+    return _models[model_key], _processors[model_key]
 
-def predict(image, question, model_choice):
-    if image is None or not question.strip():
-        return "⚠️ Vui lòng tải ảnh và nhập câu hỏi."
+def predict(image, question, mode):
+    if image is None or not question:
+        return "Vui lòng cung cấp ảnh và câu hỏi."
+    
+    question_seg = word_tokenize(question.lower(), format="text")
     
     try:
-        if model_choice.startswith("A1"):
-            model, tokenizer = _get_modular_model('lstm')
-            is_modular = True
-        elif model_choice.startswith("A2"):
-            model, tokenizer = _get_modular_model('transformer')
-            is_modular = True
-        elif model_choice.startswith("B1"):
-            model, processor = _get_paligemma_model(is_finetuned=False)
-            is_modular = False
-        elif model_choice.startswith("B2"):
-            model, processor = _get_paligemma_model(is_finetuned=True)
-            is_modular = False
+        if mode.startswith("A"):
+            decoder = 'lstm' if "LSTM" in mode else 'transformer'
+            model, tokenizer = get_modular_model(decoder)
             
-        if is_modular:
-            img_arr = np.array(image.convert('RGB'))
-            img_tensor = _transform(image=img_arr)['image'].unsqueeze(0).to(device)
-            inputs = tokenizer(question, return_tensors='pt', padding='max_length', truncation=True, max_length=128)
-            input_ids = inputs['input_ids'].to(device)
-            attn_mask = inputs['attention_mask'].to(device)
+            # Preprocess image
+            transform = A.Compose([A.Resize(224, 224), A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)), ToTensorV2()])
+            img_tensor = transform(image=np.array(image))['image'].unsqueeze(0).to(device)
+            
+            # Preprocess text
+            tokens = tokenizer(question_seg, return_tensors="pt", padding=True).to(device)
+            
+            # Default category_id = 0 (object) when not provided by UI
+            category_id = torch.tensor([0], dtype=torch.long).to(device)
             
             with torch.no_grad():
-                logits = model(img_tensor, input_ids, attn_mask)
-            token_ids = logits.argmax(-1)[0].tolist()
-            return tokenizer.decode(token_ids, skip_special_tokens=True)
-            
+                logits = model(img_tensor, tokens['input_ids'], tokens['attention_mask'], category_id)
+                preds = logits.argmax(-1)
+                return tokenizer.decode(preds[0], skip_special_tokens=True)
+                
         else:
-            inputs = processor(text=question, images=image, return_tensors='pt').to(device)
-            input_len = inputs['input_ids'].shape[1]
+            is_ft = "Fine-tuned" in mode
+            model, processor = get_blip_model(is_ft)
+            inputs = processor(images=image, text=question_seg, return_tensors="pt").to(device)
             with torch.no_grad():
-                out = model.generate(**inputs, max_new_tokens=20)
-            generated_tokens = out[:, input_len:]
-            return processor.decode(generated_tokens[0], skip_special_tokens=True)
-            
+                out = model.generate(**inputs, max_new_tokens=10)
+                return processor.decode(out[0], skip_special_tokens=True)
     except Exception as e:
-        return f"Lỗi trong quá trình dự đoán: {str(e)}"
+        return f"Lỗi: {str(e)}"
 
-def create_interface():
-    with gr.Blocks() as demo:
+def main():
+    with gr.Blocks(title="Vietnamese VQA Demo") as demo:
         gr.Markdown("# 🇻🇳 Vietnamese Visual Question Answering")
-        gr.Markdown("Hệ thống giải đáp thắc mắc qua hình ảnh bằng tiếng Việt (Hỗ trợ 4 Mô hình).")
+        gr.Markdown("Hệ thống hỏi đáp hình ảnh tiếng Việt chuyên biệt. Chọn cấu hình và đặt câu hỏi.")
         
         with gr.Row():
             with gr.Column():
-                img_input = gr.Image(type="pil", label="Tải ảnh lên")
-                question_input = gr.Textbox(label="Câu hỏi", placeholder="Ví dụ: Đây là đâu?")
-                model_selector = gr.Radio(
-                    [
-                        "A1: Modular VQA (LSTM Decoder)", 
-                        "A2: Modular VQA (Transformer Decoder)",
-                        "B1: PaliGemma (Zero-shot)",
-                        "B2: PaliGemma (Fine-tuned / LoRA)"
-                    ], 
-                    label="Chọn Mô hình", 
-                    value="B2: PaliGemma (Fine-tuned / LoRA)"
+                input_img = gr.Image(type="pil", label="Ảnh đầu vào")
+                input_txt = gr.Textbox(label="Câu hỏi tiếng Việt", placeholder="Ví dụ: Con mèo màu gì?")
+                mode_select = gr.Radio(
+                    ["A1: Modular + LSTM Decoder", "A2: Modular + Transformer Decoder", 
+                     "B1: BLIP Zero-shot", "B2: BLIP Fine-tuned"],
+                    label="Cấu hình mô hình",
+                    value="B2: BLIP Fine-tuned"
                 )
-                submit_btn = gr.Button("Phân tích", variant="primary")
-                
+                btn = gr.Button("Trả lời", variant="primary")
             with gr.Column():
-                output_text = gr.Textbox(label="Câu trả lời")
+                output_txt = gr.Textbox(label="Kết quả dự đoán")
         
-        submit_btn.click(
-            fn=predict,
-            inputs=[img_input, question_input, model_selector],
-            outputs=output_text
-        )
+        btn.click(predict, inputs=[input_img, input_txt, mode_select], outputs=output_txt)
         
-        gr.Markdown("### Ảnh tham khảo (Click để test ngay)")
-        gr.Examples(
-            examples=[
-                [os.path.join(config.IMAGES_DIR, "antelope_1.jpg"), "Đây là con gì?", "B2: PaliGemma (Fine-tuned / LoRA)"],
-                [os.path.join(config.IMAGES_DIR, "antelope_10.jpg"), "Con vật trong ảnh là gì?", "B2: PaliGemma (Fine-tuned / LoRA)"]
-            ],
-            inputs=[img_input, question_input, model_selector]
-        )
-        
-    return demo
+    demo.launch()
 
 if __name__ == "__main__":
-    demo = create_interface()
-    demo.launch(theme=gr.themes.Soft())
+    main()

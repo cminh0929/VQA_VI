@@ -84,14 +84,7 @@ Kiến trúc này tách rời quá trình trích xuất đặc trưng hình ản
   python train_modular.py --decoder_type transformer --num_epochs 10
   ```
 
-### 3.2. Hướng B: PaliGemma (Multimodal Foundation Model)
-Khai thác kiến trúc 3 tỷ tham số của Google, kết hợp kỹ thuật tinh chỉnh tham số hiệu quả (Low-Rank Adaptation - LoRA).
 
-* **Mô hình B1 - Zero-shot Inference:** Không yêu cầu huấn luyện, mô hình được tải trực tiếp cho bước suy diễn.
-* **Mô hình B2 - LoRA Fine-tuning:**
-  ```bash
-  python train_paligemma.py
-  ```
 
 ---
 

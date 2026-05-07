@@ -1,71 +1,53 @@
 import torch
 import numpy as np
-from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 from rouge_score import rouge_scorer
 import nltk
-
-# Ensure nltk resources are available
-try:
-    nltk.data.find('tokenizers/punkt')
-except LookupError:
-    nltk.download('punkt')
+from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 
 class VQAMetrics:
-    def __init__(self, tokenizer):
+    def __init__(self, tokenizer=None):
         self.tokenizer = tokenizer
         self.rouge_scorer = rouge_scorer.RougeScorer(['rougeL'], use_stemmer=True)
-        self.smoothie = SmoothingFunction().method1
+        self.smooth = SmoothingFunction().method1
 
-    def decode_ids(self, ids):
-        """Convert token IDs back to string, skipping special tokens."""
-        if torch.is_tensor(ids):
-            ids = ids.tolist()
-        return self.tokenizer.decode(ids, skip_special_tokens=True).strip().lower()
-
-    def compute_accuracy(self, preds, targets):
-        """Calculate Exact Match Accuracy."""
+    def compute_accuracy(self, preds, labels):
+        """Exact match accuracy. Labels can be a list of lists of strings or list of strings."""
         correct = 0
-        for p, t in zip(preds, targets):
-            if p == t:
+        for p, l in zip(preds, labels):
+            p_clean = p.strip().lower()
+            if isinstance(l, list):
+                l_clean = [ans.strip().lower() for ans in l]
+                if p_clean in l_clean:
+                    correct += 1
+            elif p_clean == l.strip().lower():
                 correct += 1
-        return correct / len(preds) if len(preds) > 0 else 0
+        return correct / len(preds) if preds else 0
 
-    def compute_batch_metrics(self, logits, target_ids):
+    def compute_batch_metrics(self, preds, gts):
         """
-        Calculate metrics for a batch of predictions.
-        logits: [batch, seq_len, vocab_size]
-        target_ids: [batch, seq_len]
+        preds: list of strings
+        gts: list of strings OR list of list of strings (multiple refs)
         """
-        preds_ids = torch.argmax(logits, dim=-1)
+        acc = self.compute_accuracy(preds, gts)
         
-        batch_preds = [self.decode_ids(p) for p in preds_ids]
-        batch_targets = [self.decode_ids(t) for t in target_ids]
-        
-        # 1. Accuracy (Exact Match)
-        acc = self.compute_accuracy(batch_preds, batch_targets)
-        
-        # 2. BLEU & ROUGE-L
         bleu_scores = []
         rouge_scores = []
         
-        for p, t in zip(batch_preds, batch_targets):
-            # BLEU-4
-            p_tokens = p.split()
-            t_tokens = t.split()
-            if not t_tokens: # Handle empty target
-                bleu = 0.0
-                rouge = 0.0
-            else:
-                bleu = sentence_bleu([t_tokens], p_tokens, smoothing_function=self.smoothie)
-                rouge = self.rouge_scorer.score(t, p)['rougeL'].fmeasure
+        for p, g in zip(preds, gts):
+            # Ensure g is a list of references
+            refs = g if isinstance(g, list) else [g]
             
-            bleu_scores.append(bleu)
-            rouge_scores.append(rouge)
+            # BLEU: Take max BLEU across all references
+            p_split = p.split()
+            b_score = max([sentence_bleu([r.split()], p_split, smoothing_function=self.smooth) for r in refs])
+            bleu_scores.append(b_score)
+            
+            # ROUGE: Take max ROUGE across all references
+            r_score = max([self.rouge_scorer.score(r, p)['rougeL'].fmeasure for r in refs])
+            rouge_scores.append(r_score)
             
         return {
             'accuracy': acc,
             'bleu': np.mean(bleu_scores),
             'rougeL': np.mean(rouge_scores),
-            'preds_sample': batch_preds[:2],   # Return samples for logging
-            'targets_sample': batch_targets[:2]
         }
