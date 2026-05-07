@@ -1,17 +1,26 @@
 import os
 
 class Config:
+    # --- Kaggle Detection ---
+    IS_KAGGLE = os.path.exists('/kaggle/input')
+    KAGGLE_DATA_PATH = "/kaggle/input/datasets/minhngcng3/dataset/data"
+    
     # --- Paths ---
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    DATA_DIR = os.path.join(BASE_DIR, "data")
-    IMAGES_DIR = os.path.join(DATA_DIR, "images")
     
+    if IS_KAGGLE:
+        DATA_DIR = KAGGLE_DATA_PATH
+        CHECKPOINT_DIR = "/kaggle/working/results/checkpoints"
+        LOG_DIR = "/kaggle/working/results/logs"
+    else:
+        DATA_DIR = os.path.join(BASE_DIR, "data")
+        CHECKPOINT_DIR = os.path.join(BASE_DIR, "results", "checkpoints")
+        LOG_DIR = os.path.join(BASE_DIR, "results", "logs")
+    
+    IMAGES_DIR = os.path.join(DATA_DIR, "images")
     TRAIN_JSON = os.path.join(DATA_DIR, "train_final.json")
     VAL_JSON = os.path.join(DATA_DIR, "val_final.json")
     TEST_JSON = os.path.join(DATA_DIR, "test_final.json")
-    
-    CHECKPOINT_DIR = os.path.join(BASE_DIR, "results", "checkpoints")
-    LOG_DIR = os.path.join(BASE_DIR, "results", "logs")
     
     # --- Model Configs (Common) ---
     DEVICE = "cuda" if os.environ.get("CUDA_VISIBLE_DEVICES") != "-1" else "cpu"
