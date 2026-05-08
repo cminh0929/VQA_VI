@@ -101,35 +101,104 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--debug", action="store_true", help="Run with small subset of data")
+    parser.add_argument("--skip-blip", action="store_true", help="Skip BLIP evaluation")
     args = parser.parse_args()
     
     config = Config()
     device = config.DEVICE
     
     test_limit = 3 if args.debug else None
+    default_metrics = {"accuracy": 0, "bleu": 0, "rougeL": 0}
     
-    # Loaders
+    # ============================================================
+    # Direction A: Modular Models (LSTM + Transformer)
+    # ============================================================
+    print("\n" + "="*50)
+    print("  EVALUATION: Direction A - Modular Models")
+    print("="*50)
+    
     test_loader_a = get_dataloader(config, config.TEST_JSON, direction='A', is_train=False, batch_size=8, limit=test_limit)
-    test_loader_b = get_dataloader(config, config.TEST_JSON, direction='B', is_train=False, batch_size=4, limit=test_limit)
     
-    print("\n" + "="*40)
-    print("STARTING EVALUATION OF ALL 4 CONFIGURATIONS")
-    print("="*40)
-    
-    # A1 & A2
+    # A1: LSTM Decoder
     path_a1 = os.path.join(config.CHECKPOINT_DIR, "modular_lstm_best.pt")
-    res_a1 = evaluate_modular(path_a1, 'lstm', config, test_loader_a, device) if os.path.exists(path_a1) else {"accuracy": 0, "bleu": 0, "rougeL": 0}
+    if os.path.exists(path_a1):
+        print(f"\n[A1] Found checkpoint: {path_a1}")
+        res_a1 = evaluate_modular(path_a1, 'lstm', config, test_loader_a, device)
+    else:
+        print(f"\n[A1] Checkpoint NOT found: {path_a1} — Skipping.")
+        res_a1 = default_metrics
     
+    # A2: Transformer Decoder
     path_a2 = os.path.join(config.CHECKPOINT_DIR, "modular_transformer_best.pt")
-    res_a2 = evaluate_modular(path_a2, 'transformer', config, test_loader_a, device) if os.path.exists(path_a2) else {"accuracy": 0, "bleu": 0, "rougeL": 0}
+    if os.path.exists(path_a2):
+        print(f"\n[A2] Found checkpoint: {path_a2}")
+        res_a2 = evaluate_modular(path_a2, 'transformer', config, test_loader_a, device)
+    else:
+        print(f"\n[A2] Checkpoint NOT found: {path_a2} — Skipping.")
+        res_a2 = default_metrics
     
+    # ============================================================
+    # Direction B: BLIP Models (Zero-shot + Fine-tuned)
+    # ============================================================
+    res_b1 = default_metrics
+    res_b2 = default_metrics
+    
+    if not args.skip_blip:
+        print("\n" + "="*50)
+        print("  EVALUATION: Direction B - BLIP Models")
+        print("="*50)
+        
+        test_loader_b = get_dataloader(config, config.TEST_JSON, direction='B', is_train=False, batch_size=4, limit=test_limit)
+        
+        # B1: BLIP Zero-shot (no fine-tuning)
+        print("\n[B1] Evaluating BLIP Zero-shot...")
+        try:
+            res_b1 = evaluate_blip(None, config, test_loader_b, device, is_zero_shot=True)
+        except Exception as e:
+            print(f"[B1] Error: {e}")
+        
+        # B2: BLIP Fine-tuned (LoRA)
+        path_b2 = os.path.join(config.CHECKPOINT_DIR, "blip_lora_best")
+        if not os.path.exists(path_b2):
+            # Try to find the latest epoch checkpoint
+            blip_checkpoints = [d for d in os.listdir(config.CHECKPOINT_DIR) if d.startswith("blip_lora_epoch")]
+            if blip_checkpoints:
+                blip_checkpoints.sort(key=lambda x: int(x.replace("blip_lora_epoch", "")))
+                path_b2 = os.path.join(config.CHECKPOINT_DIR, blip_checkpoints[-1])
+        
+        if os.path.exists(path_b2):
+            print(f"\n[B2] Found LoRA checkpoint: {path_b2}")
+            try:
+                res_b2 = evaluate_blip(path_b2, config, test_loader_b, device, is_zero_shot=False)
+            except Exception as e:
+                print(f"[B2] Error: {e}")
+        else:
+            print(f"\n[B2] No BLIP LoRA checkpoint found — Skipping.")
+    else:
+        print("\n[INFO] Skipping BLIP evaluation (--skip-blip flag)")
+    
+    # ============================================================
+    # Summary Report
+    # ============================================================
     summary = f"""
-FINAL RESULTS SUMMARY (Vietnamese VQA):
---------------------------------------------------
-A1 (Modular + LSTM):        Acc: {res_a1['accuracy']:.4f} | BLEU: {res_a1['bleu']:.4f} | ROUGE: {res_a1['rougeL']:.4f}
-A2 (Modular + Transformer): Acc: {res_a2['accuracy']:.4f} | BLEU: {res_a2['bleu']:.4f} | ROUGE: {res_a2['rougeL']:.4f}
---------------------------------------------------
+{'='*55}
+  FINAL RESULTS SUMMARY — Vietnamese VQA Evaluation
+{'='*55}
+  Direction A (Modular: ResNet50 + PhoBERT)
+  -----------------------------------------
+  A1 (LSTM Decoder):        Acc: {res_a1['accuracy']:.4f} | BLEU: {res_a1['bleu']:.4f} | ROUGE-L: {res_a1['rougeL']:.4f}
+  A2 (Transformer Decoder): Acc: {res_a2['accuracy']:.4f} | BLEU: {res_a2['bleu']:.4f} | ROUGE-L: {res_a2['rougeL']:.4f}
+
+  Direction B (Multimodal: BLIP + LoRA)
+  -----------------------------------------
+  B1 (Zero-shot):           Acc: {res_b1['accuracy']:.4f} | BLEU: {res_b1['bleu']:.4f} | ROUGE-L: {res_b1['rougeL']:.4f}
+  B2 (Fine-tuned LoRA):     Acc: {res_b2['accuracy']:.4f} | BLEU: {res_b2['bleu']:.4f} | ROUGE-L: {res_b2['rougeL']:.4f}
+{'='*55}
 """
     print(summary)
+    
+    os.makedirs("results", exist_ok=True)
     with open("results/eval_summary.txt", "w", encoding="utf-8") as f:
         f.write(summary)
+    print("Results saved to results/eval_summary.txt")
+
