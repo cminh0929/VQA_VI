@@ -6,26 +6,21 @@ import_utils.check_torch_load_is_safe = lambda: None
 modeling_utils.check_torch_load_is_safe = lambda: None
 
 import torch
-print('TORCH IMPORTED', file=sys.stderr)
-print('TORCH IMPORTED', file=sys.stderr)
 import torch.nn as nn
-print('NN IMPORTED', file=sys.stderr)
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm.auto import tqdm
 import os
 import ssl
 from config import Config
-print('CONFIG IMPORTED', file=sys.stderr)
 from models.modular_vqa import ModularVQA
-print('MODELS IMPORTED', file=sys.stderr)
 from utils.data_loader import get_dataloader
-print('DATALOADER IMPORTED', file=sys.stderr)
 from transformers import AutoTokenizer
 from utils.metrics import VQAMetrics
 import numpy as np
-# ALL IMPORTS DONE
-print('ALL IMPORTS DONE', file=sys.stderr)
+
+if __name__ == "__main__":
+    print('ALL IMPORTS DONE', file=sys.stderr)
 
 def train_modular(decoder_type='lstm', is_debug=False, epochs=None):
     print("DEBUG: Starting train_modular function")

@@ -2,6 +2,7 @@ import os
 import json
 import cv2
 import torch
+import sys
 from torch.utils.data import Dataset, DataLoader
 from PIL import Image
 from transformers import AutoTokenizer, BlipProcessor
@@ -9,6 +10,9 @@ import albumentations as A
 from albumentations.pytorch import ToTensorV2
 from underthesea import word_tokenize
 import numpy as np
+
+if __name__ == "__main__":
+    print('ALL IMPORTS DONE', file=sys.stderr)
 
 class VQADataset(Dataset):
     def __init__(self, config, json_path, direction='A', tokenizer=None, processor=None, is_train=True, limit=None, expand_answers=False):
@@ -164,6 +168,8 @@ def blip_collate_fn(batch, processor):
     
     inputs = processor(images=images, text=questions, return_tensors="pt", padding=True)
     labels = processor.tokenizer(text=answers, return_tensors="pt", padding=True).input_ids
+    # Important: Set padding tokens to -100 so they are ignored by the loss function
+    labels[labels == processor.tokenizer.pad_token_id] = -100
     inputs['labels'] = labels
     
     # Keep raw data for evaluation
