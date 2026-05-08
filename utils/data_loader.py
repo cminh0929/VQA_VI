@@ -168,16 +168,21 @@ def blip_collate_fn(batch, processor, config):
     
     inputs = processor(images=images, text=questions, return_tensors="pt", padding=True)
     
-    # Enforce consistent max_length for labels to avoid batch size mismatch
-    labels = processor.tokenizer(
+    # Tokenize answers once
+    answer_tokens = processor.tokenizer(
         text=answers, 
         return_tensors="pt", 
         padding='max_length', 
         max_length=config.MAX_ANSWER_LENGTH,
         truncation=True
-    ).input_ids
+    )
     
-    # Important: Set padding tokens to -100 so they are ignored by the loss function
+    # decoder_input_ids: valid token IDs (no -100) for the decoder embedding layer
+    inputs['decoder_input_ids'] = answer_tokens.input_ids
+    inputs['decoder_attention_mask'] = answer_tokens.attention_mask
+    
+    # labels: same tokens but padding replaced with -100 so loss ignores them
+    labels = answer_tokens.input_ids.clone()
     labels[labels == processor.tokenizer.pad_token_id] = -100
     inputs['labels'] = labels
     
