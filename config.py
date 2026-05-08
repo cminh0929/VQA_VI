@@ -25,7 +25,7 @@ class Config:
     # --- Model Configs (Common) ---
     DEVICE = "cuda" if os.environ.get("CUDA_VISIBLE_DEVICES") != "-1" else "cpu"
     MAX_QUESTION_LENGTH = 128
-    MAX_ANSWER_LENGTH = 10  # Based on plan requirement
+    MAX_ANSWER_LENGTH = 30  # Increased to match BLIP default decoder length
     
     # --- Direction A (Modular) ---
     IMAGE_ENCODER = "resnet50" # resnet50, vit_base_patch16_224

@@ -136,7 +136,7 @@ class VQADataset(Dataset):
                 answer,
                 padding='max_length',
                 truncation=True,
-                max_length=self.config.MAX_ANSWER_LENGTH,
+                max_length=30,
                 return_tensors="pt"
             )
             
@@ -167,10 +167,21 @@ def blip_collate_fn(batch, processor):
     answers = [x['answer'] for x in batch]
     
     inputs = processor(images=images, text=questions, return_tensors="pt", padding=True)
-    labels = processor.tokenizer(text=answers, return_tensors="pt", padding=True).input_ids
+    
+    # Enforce consistent max_length for labels to avoid batch size mismatch
+    labels = processor.tokenizer(
+        text=answers, 
+        return_tensors="pt", 
+        padding='max_length', 
+        max_length=config.MAX_ANSWER_LENGTH,
+        truncation=True
+    ).input_ids
+    
     # Important: Set padding tokens to -100 so they are ignored by the loss function
     labels[labels == processor.tokenizer.pad_token_id] = -100
     inputs['labels'] = labels
+    # Explicitly set decoder_input_ids to avoid defaulting to the question (input_ids)
+    inputs['decoder_input_ids'] = processor.tokenizer(text=answers, return_tensors="pt", padding='max_length', max_length=config.MAX_ANSWER_LENGTH, truncation=True).input_ids
     
     # Keep raw data for evaluation
     inputs['questions_raw'] = questions
