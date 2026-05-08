@@ -11,7 +11,7 @@ from underthesea import word_tokenize
 import numpy as np
 
 class VQADataset(Dataset):
-    def __init__(self, config, json_path, direction='A', tokenizer=None, processor=None, is_train=True, limit=None):
+    def __init__(self, config, json_path, direction='A', tokenizer=None, processor=None, is_train=True, limit=None, expand_answers=False):
         self.config = config
         self.direction = direction
         self.is_train = is_train
@@ -23,14 +23,27 @@ class VQADataset(Dataset):
         if limit:
             self.data = self.data[:limit]
 
+        # Expand answers if requested (useful for training to get more samples)
+        if expand_answers:
+            expanded_data = []
+            for item in self.data:
+                if 'answers' in item and isinstance(item['answers'], list):
+                    for ans in item['answers']:
+                        new_item = item.copy()
+                        new_item['answer'] = ans # Set specific answer for this sample
+                        expanded_data.append(new_item)
+                else:
+                    expanded_data.append(item)
+            self.data = expanded_data
+
         # Pre-process word segmentation once to save CPU during training
         print(f"Pre-processing word segmentation for {len(self.data)} items...")
         for item in self.data:
             item['question'] = self._preprocess_text(item['question'])
-            if 'answers' in item and isinstance(item['answers'], list):
-                item['answers'] = [self._preprocess_text(a) for a in item['answers']]
             if 'answer' in item:
                 item['answer'] = self._preprocess_text(item['answer'])
+            if 'answers' in item and isinstance(item['answers'], list):
+                item['answers'] = [self._preprocess_text(a) for a in item['answers']]
             
         # Direction A uses PhoBERT Tokenizer, Direction B uses BlipProcessor
         self.tokenizer = tokenizer
@@ -166,10 +179,10 @@ def modular_collate_fn(batch):
     collated['answers_raw'] = answers_raw
     return collated
 
-def get_dataloader(config, json_path, direction='A', is_train=True, batch_size=None, limit=None):
+def get_dataloader(config, json_path, direction='A', is_train=True, batch_size=None, limit=None, expand_answers=False):
     if direction == 'A':
         tokenizer = AutoTokenizer.from_pretrained("weight")
-        dataset = VQADataset(config, json_path, direction='A', tokenizer=tokenizer, is_train=is_train, limit=limit)
+        dataset = VQADataset(config, json_path, direction='A', tokenizer=tokenizer, is_train=is_train, limit=limit, expand_answers=expand_answers)
         return DataLoader(
             dataset, 
             batch_size=batch_size or config.BATCH_SIZE_A, 
@@ -179,7 +192,7 @@ def get_dataloader(config, json_path, direction='A', is_train=True, batch_size=N
         )
     else:
         processor = BlipProcessor.from_pretrained(config.BLIP_MODEL_ID)
-        dataset = VQADataset(config, json_path, direction='B', is_train=is_train, limit=limit)
+        dataset = VQADataset(config, json_path, direction='B', is_train=is_train, limit=limit, expand_answers=expand_answers)
         return DataLoader(
             dataset, 
             batch_size=batch_size or config.BATCH_SIZE_B, 

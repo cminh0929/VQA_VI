@@ -113,26 +113,17 @@ if __name__ == "__main__":
     print("="*40)
     
     # A1 & A2
-    path_a1 = os.path.join(config.CHECKPOINT_DIR, "modular_lstm_epoch10.pt")
+    path_a1 = os.path.join(config.CHECKPOINT_DIR, "modular_lstm_best.pt")
     res_a1 = evaluate_modular(path_a1, 'lstm', config, test_loader_a, device) if os.path.exists(path_a1) else {"accuracy": 0, "bleu": 0, "rougeL": 0}
     
-    path_a2 = os.path.join(config.CHECKPOINT_DIR, "modular_transformer_epoch10.pt")
+    path_a2 = os.path.join(config.CHECKPOINT_DIR, "modular_transformer_best.pt")
     res_a2 = evaluate_modular(path_a2, 'transformer', config, test_loader_a, device) if os.path.exists(path_a2) else {"accuracy": 0, "bleu": 0, "rougeL": 0}
-    
-    # B1 (Zero-shot)
-    res_b1 = evaluate_blip(config.BLIP_MODEL_ID, config, test_loader_b, device, is_zero_shot=True)
-    
-    # B2 (Fine-tuned)
-    path_b2 = os.path.join(config.CHECKPOINT_DIR, "blip_lora_epoch10")
-    res_b2 = evaluate_blip(path_b2, config, test_loader_b, device, is_zero_shot=False) if os.path.exists(path_b2) else {"accuracy": 0, "bleu": 0, "rougeL": 0}
     
     summary = f"""
 FINAL RESULTS SUMMARY (Vietnamese VQA):
 --------------------------------------------------
 A1 (Modular + LSTM):        Acc: {res_a1['accuracy']:.4f} | BLEU: {res_a1['bleu']:.4f} | ROUGE: {res_a1['rougeL']:.4f}
 A2 (Modular + Transformer): Acc: {res_a2['accuracy']:.4f} | BLEU: {res_a2['bleu']:.4f} | ROUGE: {res_a2['rougeL']:.4f}
-B1 (BLIP Zero-shot):       Acc: {res_b1['accuracy']:.4f} | BLEU: {res_b1['bleu']:.4f} | ROUGE: {res_b1['rougeL']:.4f}
-B2 (BLIP Fine-tuned):      Acc: {res_b2['accuracy']:.4f} | BLEU: {res_b2['bleu']:.4f} | ROUGE: {res_b2['rougeL']:.4f}
 --------------------------------------------------
 """
     print(summary)

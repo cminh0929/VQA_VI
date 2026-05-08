@@ -17,8 +17,7 @@ class BlipVQAModel:
                 lora_alpha=config.LORA_ALPHA,
                 target_modules=config.LORA_TARGET_MODULES,
                 lora_dropout=config.LORA_DROPOUT,
-                bias="none",
-                task_type="CAUSAL_LM"
+                bias="none"
             )
             model = get_peft_model(model, lora_config)
             model.print_trainable_parameters()

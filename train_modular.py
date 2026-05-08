@@ -45,7 +45,7 @@ def train_modular(decoder_type='lstm', is_debug=False, epochs=None):
     val_limit = 4 if is_debug else None
     
     print("DEBUG: Creating dataloaders...")
-    train_loader = get_dataloader(config, config.TRAIN_JSON, direction='A', is_train=True, limit=train_limit)
+    train_loader = get_dataloader(config, config.TRAIN_JSON, direction='A', is_train=True, limit=train_limit, expand_answers=True)
     val_loader = get_dataloader(config, config.VAL_JSON, direction='A', is_train=False, limit=val_limit)
     print("DEBUG: Dataloaders created.")
     
@@ -78,7 +78,9 @@ def train_modular(decoder_type='lstm', is_debug=False, epochs=None):
             optimizer.zero_grad()
             logits = model(images, input_ids, attention_mask, category_id, labels)
             
-            loss = criterion(logits.view(-1, logits.size(-1)), labels.view(-1))
+            # Shift labels for next-token prediction
+            # input: [<s>, t1, t2] -> target: [t1, t2, </s>]
+            loss = criterion(logits[:, :-1, :].reshape(-1, logits.size(-1)), labels[:, 1:].reshape(-1))
             loss.backward()
             optimizer.step()
             
@@ -103,7 +105,7 @@ def train_modular(decoder_type='lstm', is_debug=False, epochs=None):
                 
                 # Loss: use teacher forcing (standard for training monitoring)
                 logits_tf = model(images, input_ids, attention_mask, category_id, labels)
-                loss = criterion(logits_tf.view(-1, logits_tf.size(-1)), labels.view(-1))
+                loss = criterion(logits_tf[:, :-1, :].reshape(-1, logits_tf.size(-1)), labels[:, 1:].reshape(-1))
                 val_loss += loss.item()
                 
                 # Accuracy: use inference mode (no target_ids) to match evaluate_all.py
