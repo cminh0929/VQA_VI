@@ -14,7 +14,7 @@ class Config:
         LOG_DIR = "/kaggle/working/results/logs"
     else:
         DATA_DIR = os.path.join(BASE_DIR, "data")
-        CHECKPOINT_DIR = os.path.join(BASE_DIR, "results", "checkpoint")
+        CHECKPOINT_DIR = os.path.join(BASE_DIR, "results", "checkpoints")
         LOG_DIR = os.path.join(BASE_DIR, "results", "logs")
     
     IMAGES_DIR = os.path.join(DATA_DIR, "images")
