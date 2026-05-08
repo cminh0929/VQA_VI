@@ -180,8 +180,6 @@ def blip_collate_fn(batch, processor, config):
     # Important: Set padding tokens to -100 so they are ignored by the loss function
     labels[labels == processor.tokenizer.pad_token_id] = -100
     inputs['labels'] = labels
-    # Explicitly set decoder_input_ids to avoid defaulting to the question (input_ids)
-    inputs['decoder_input_ids'] = processor.tokenizer(text=answers, return_tensors="pt", padding='max_length', max_length=config.MAX_ANSWER_LENGTH, truncation=True).input_ids
     
     # Keep raw data for evaluation
     inputs['questions_raw'] = questions

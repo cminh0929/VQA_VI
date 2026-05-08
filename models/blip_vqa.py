@@ -1,4 +1,4 @@
-from transformers import BlipForConditionalGeneration, BlipProcessor
+from transformers import BlipForQuestionAnswering, BlipProcessor
 from peft import LoraConfig, get_peft_model
 import torch
 
@@ -6,7 +6,7 @@ class BlipVQAModel:
     @staticmethod
     def get_model(config, is_train=True):
         device = config.DEVICE
-        model = BlipForConditionalGeneration.from_pretrained(
+        model = BlipForQuestionAnswering.from_pretrained(
             config.BLIP_MODEL_ID,
             torch_dtype=torch.float16 if device == "cuda" else torch.float32
         )
