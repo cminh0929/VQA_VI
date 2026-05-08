@@ -10,7 +10,7 @@ if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
 
 import torch
-from transformers import AutoTokenizer, BlipProcessor, BlipForConditionalGeneration
+from transformers import AutoTokenizer, BlipProcessor, BlipForQuestionAnswering
 from models.modular_vqa import ModularVQA
 from utils.data_loader import get_dataloader
 from utils.metrics import VQAMetrics
@@ -58,13 +58,13 @@ def evaluate_modular(model_path, decoder_type, config, test_loader, device):
 
 def evaluate_blip(model_id_or_path, config, test_loader, device, is_zero_shot=False):
     if is_zero_shot:
-        model = BlipForConditionalGeneration.from_pretrained(
+        model = BlipForQuestionAnswering.from_pretrained(
             config.BLIP_MODEL_ID, 
             torch_dtype=torch.float16 if device == "cuda" else torch.float32
         ).to(device)
     else:
         from peft import PeftModel
-        base_model = BlipForConditionalGeneration.from_pretrained(
+        base_model = BlipForQuestionAnswering.from_pretrained(
             config.BLIP_MODEL_ID, 
             torch_dtype=torch.float16 if device == "cuda" else torch.float32
         ).to(device)
@@ -81,7 +81,11 @@ def evaluate_blip(model_id_or_path, config, test_loader, device, is_zero_shot=Fa
             images = batch['pixel_values'].to(device, dtype=torch.float16 if device == "cuda" else torch.float32)
             input_ids = batch['input_ids'].to(device)
             
-            output_tokens = model.generate(pixel_values=images, input_ids=input_ids, max_new_tokens=config.MAX_ANSWER_LENGTH)
+            output_tokens = model.generate(
+                pixel_values=images, 
+                input_ids=input_ids, 
+                max_length=config.MAX_ANSWER_LENGTH
+            )
             decoded = processor.batch_decode(output_tokens, skip_special_tokens=True)
             
             preds.extend(decoded)
