@@ -160,7 +160,7 @@ class VQADataset(Dataset):
                 'answers_raw': item.get('answers', [raw_answer])
             }
 
-def blip_collate_fn(batch, processor):
+def blip_collate_fn(batch, processor, config):
     images = [x['image'] for x in batch]
     # Integrate category into prompt for better performance
     questions = [f"[{x['category']}] {x['question']}" if 'category' in x else x['question'] for x in batch]
@@ -215,5 +215,5 @@ def get_dataloader(config, json_path, direction='A', is_train=True, batch_size=N
             batch_size=batch_size or config.BATCH_SIZE_B, 
             shuffle=is_train,
             num_workers=2,
-            collate_fn=lambda b: blip_collate_fn(b, processor)
+            collate_fn=lambda b: blip_collate_fn(b, processor, config)
         )
