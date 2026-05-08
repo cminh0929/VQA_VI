@@ -29,20 +29,26 @@ class LSTMDecoder(nn.Module):
             outputs, _ = self.lstm(embeddings, (h0, c0))
             return self.fc(outputs)
         else:
-            # Inference: Greedy with BOS handling
+            # Inference: Greedy with BOS handling + EOS early stopping
             device = fused_features.device
             max_len = self.max_answer_length
+            eos_token_id = 2  # PhoBERT </s> token
             # Note: PhoBERT <s> is index 0
             curr_token = torch.zeros((batch_size, 1), dtype=torch.long, device=device)
             h, c = h0, c0
             
             all_logits = []
+            finished = torch.zeros(batch_size, dtype=torch.bool, device=device)
             for _ in range(max_len):
                 emb = self.embedding(curr_token)
                 out, (h, c) = self.lstm(emb, (h, c))
                 logits = self.fc(out)
                 all_logits.append(logits)
                 curr_token = logits.argmax(-1)
+                # Check if all samples have produced EOS
+                finished = finished | (curr_token.squeeze(-1) == eos_token_id)
+                if finished.all():
+                    break
                 
             return torch.cat(all_logits, dim=1)
 
@@ -77,11 +83,13 @@ class TransformerDecoder(nn.Module):
             output = self.transformer_decoder(tgt, memory, tgt_mask=tgt_mask)
             return self.fc(output)
         else:
-            # Robust Greedy decoding - collect logits at each step
+            # Robust Greedy decoding with EOS early stopping
             max_len = self.max_answer_length
+            eos_token_id = 2  # PhoBERT </s> token
             curr_tokens = torch.zeros((batch_size, 1), dtype=torch.long, device=device) # <s> token
             
             all_logits = []
+            finished = torch.zeros(batch_size, dtype=torch.bool, device=device)
             for _ in range(max_len):
                 tgt = self.embedding(curr_tokens)
                 tgt_mask = nn.Transformer.generate_square_subsequent_mask(tgt.size(1), device=device)
@@ -90,5 +98,9 @@ class TransformerDecoder(nn.Module):
                 all_logits.append(next_token_logits)
                 next_token = next_token_logits.argmax(-1)
                 curr_tokens = torch.cat([curr_tokens, next_token], dim=1)
+                # Check if all samples have produced EOS
+                finished = finished | (next_token.squeeze(-1) == eos_token_id)
+                if finished.all():
+                    break
                 
             return torch.cat(all_logits, dim=1)
