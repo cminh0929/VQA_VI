@@ -103,10 +103,13 @@ class VQADataset(Dataset):
         # Text already preprocessed in __init__
         question = item['question']
         
-        if 'answers' in item and isinstance(item['answers'], list) and len(item['answers']) > 0:
-            raw_answer = item['answers'][0]
+        if 'answer' in item:
+            raw_answer = item['answer']
+        elif 'answers' in item and isinstance(item['answers'], list) and len(item['answers']) > 0:
+            # Prioritize the longest answer to encourage the model to learn full sentences
+            raw_answer = max(item['answers'], key=len)
         else:
-            raw_answer = item.get('answer', "")
+            raw_answer = ""
             
         answer = raw_answer
         
@@ -199,6 +202,13 @@ def modular_collate_fn(batch):
     collated['answers_raw'] = answers_raw
     return collated
 
+class BlipCollate:
+    def __init__(self, processor, config):
+        self.processor = processor
+        self.config = config
+    def __call__(self, batch):
+        return blip_collate_fn(batch, self.processor, self.config)
+
 def get_dataloader(config, json_path, direction='A', is_train=True, batch_size=None, limit=None, expand_answers=False):
     if direction == 'A':
         tokenizer = AutoTokenizer.from_pretrained("weight")
@@ -218,5 +228,5 @@ def get_dataloader(config, json_path, direction='A', is_train=True, batch_size=N
             batch_size=batch_size or config.BATCH_SIZE_B, 
             shuffle=is_train,
             num_workers=2,
-            collate_fn=lambda b: blip_collate_fn(b, processor, config)
+            collate_fn=BlipCollate(processor, config)
         )
