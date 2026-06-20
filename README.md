@@ -1,55 +1,98 @@
-# DỰ ÁN CUỐI KỲ MÔN HỌC SÂU: Hệ thống Hỏi đáp trên Ảnh (Visual Question Answering)
+# Vietnamese Visual Question Answering (VQA) - Animals Domain
 
-Dự án xây dựng hệ thống Visual Question Answering (VQA) tiếng Việt trên một miền chuyên biệt. Hệ thống nhận đầu vào là ảnh và câu hỏi tiếng Việt, từ đó sinh ra câu trả lời tương ứng. Dự án kết hợp các kiến thức về mạng nơ-ron tích chập (CNN), mạng học sâu chuỗi (LSTM, Transformer) và học đa phương thức (Multimodal Learning).
+Dự án xây dựng hệ thống Visual Question Answering (VQA) chuyên biệt cho tiếng Việt, tập trung vào miền dữ liệu **Động vật**. Hệ thống được thiết kế linh hoạt với hai hướng tiếp cận chính: Kiến trúc Modular (CNN + Transformer/LSTM) và Kiến trúc Đa phương thức hiện đại (BLIP + LoRA).
 
-## 1. Dữ liệu
-- **Miền chuyên biệt**: (Sinh viên/Nhóm tự chọn: món ăn Việt, thắng cảnh, biển báo giao thông, nông sản, trang phục truyền thống...)
-- **Quy mô dữ liệu**:
-  - Tập huấn luyện (Train): $\ge$ 2000 bộ (ảnh, câu hỏi, câu trả lời) với tối thiểu 200 ảnh và mỗi ảnh có $\ge$ 3 câu hỏi.
-  - Tập kiểm thử (Test): $\ge$ 50 bộ chuẩn bị thủ công, ảnh không trùng lặp với tập train.
-- **Loại câu hỏi**: Đa dạng (Yes/No, đếm số lượng, nhận dạng, thuộc tính, không gian...).
-- **Đầu ra**: Câu trả lời ngắn ngọn (dưới 10 từ).
-- **Phân chia dữ liệu**: Train / Val / Test theo tỷ lệ 80/10/10.
-- **Tăng cường dữ liệu (Data Augmentation)**: Áp dụng các kỹ thuật tăng cường ảnh (lật, xoay, crop) và văn bản (paraphrase, back-translation).
+---
 
-## 2. Mô hình (Hai hướng tiếp cận)
+## 1. Dữ liệu (Dataset)
 
-### Hướng A — Kiến trúc rời
-- **Image encoder**: Sử dụng CNN pretrained (ResNet/VGG/EfficientNet) hoặc ViT.
-- **Text encoder**: Sử dụng LSTM/BiLSTM hoặc PhoBERT.
-- **Fusion**: Thực hiện kết hợp đặc trưng qua concat, element-wise, hoặc co-attention.
-- **Answer decoder**: So sánh giữa LSTM decoder và Transformer decoder (giữ nguyên encoder).
+Dự án sử dụng bộ dữ liệu chuyên biệt về động vật với **3,491 hình ảnh** và **10,800 câu hỏi**.
 
-### Hướng B — Multimodal pretrained
-- Thực hiện Fine-tune các mô hình: BLIP/BLIP-2, ViLT, LLaVA, Qwen-VL, hoặc PaliGemma (sử dụng LoRA/PEFT nếu cần).
-- Chiến lược xử lý tiếng Việt: Dịch thuật trước khi đưa vào mô hình hoặc sử dụng mô hình hỗ trợ trực tiếp tiếng Việt.
+### 1.1. Cấu trúc thư mục
+```text
+VQA_VI/
+├── data/
+│   ├── images/              # Toàn bộ ảnh (.jpg)
+│   ├── train_final.json     # 8,640 câu hỏi
+│   ├── val_final.json       # 1,043 câu hỏi
+│   └── test_final.json      # 1,117 câu hỏi
+```
 
-## 3. Thực nghiệm và Đánh giá
+### 1.2. Định dạng JSON
+Mỗi mẫu dữ liệu bao gồm ảnh, câu hỏi, danh sách đáp án và nhãn phân loại (Category):
+```json
+{
+    "image_id": "eagle_42.jpg",
+    "question": "Đây là con vật gì?",
+    "answers": ["chim ưng", "đại bàng"],
+    "category": "Object"
+}
+```
+*Các phân loại chính:* `Object`, `Color`, `Action`, `Location`, `Appearance`, `Yes/No`.
 
-### Cấu hình thực nghiệm
-1. **A1**: Hướng A với LSTM decoder.
-2. **A2**: Hướng A với Transformer decoder (So sánh với A1 để đánh giá ảnh hưởng của decoder).
-3. **B1**: Hướng B ở chế độ zero-shot.
-4. **B2**: Hướng B sau khi fine-tuned.
+---
 
-### Tiêu chí đánh giá
-- VQA Accuracy (exact match / soft accuracy chuẩn VQA v2).
-- Các độ đo xử lý ngôn ngữ: BLEU, ROUGE-L, METEOR.
-- Đánh giá ngữ nghĩa: BERTScore.
-- Phương pháp đánh giá LLM-as-a-judge.
+## 2. Kiến trúc Mô hình (Architecture)
 
-## 4. Các giải pháp nâng cao chất lượng (Nâng cao)
-- **Reinforcement Learning (RL)**: Huấn luyện bổ sung bằng RL (PPO với reward là VQA Accuracy/BERTScore, DPO, hoặc RLHF).
-  - Yêu cầu Preference data $\ge$ 100 cặp.
-  - So sánh kết quả RL và SFT (Supervised Fine-Tuning).
-- Các kỹ thuật tối ưu và nâng cao khác.
+### Hướng A: Kiến trúc Modular (Baseline)
+- **Image Encoder**: ResNet-50 (Pretrained).
+- **Text Encoder**: PhoBERT (Xử lý tiếng Việt chuyên sâu).
+- **Fusion Layer**: Global Fusion kết hợp đặc trưng Ảnh + Văn bản + Loại câu hỏi (Category).
+- **Decoder**: LSTM (A1) hoặc Transformer (A2).
 
-## 5. Demo
-- Tích hợp giao diện người dùng (ví dụ: Gradio, Streamlit) để trực quan hóa mô hình (khuyến khích).
+### Hướng B: Kiến trúc Đa phương thức (SOTA)
+- **Base Model**: `Salesforce/blip-vqa-base`.
+- **Fine-tuning**: Sử dụng kỹ thuật **LoRA** (Low-Rank Adaptation) để tối ưu hóa trên dữ liệu tiếng Việt với tài nguyên thấp.
 
-## 6. Sản phẩm & Cấu trúc Repo
-- Mã nguồn hệ thống.
-- Báo cáo phân tích và đánh giá (15-20 trang).
-- Slide và Video Demo.
-- Dataset và Checkpoint được public (HuggingFace Hub/Google Drive).
+---
 
+## 3. Hướng dẫn sử dụng (Usage)
+
+### 3.1. Cài đặt môi trường
+```bash
+pip install -r requirements.txt
+```
+
+### 3.2. Huấn luyện (Training)
+* **Modular (Hướng A):**
+  ```bash
+  python train_modular.py --decoder_type transformer --num_epochs 20
+  ```
+* **BLIP (Hướng B):**
+  ```bash
+  python train_blip.py --use_lora True --num_epochs 10
+  ```
+
+### 3.3. Đánh giá (Evaluation)
+Tính toán các chỉ số Accuracy (Exact Match), BLEU-4 và ROUGE-L trên toàn bộ các model:
+```bash
+python evaluate_all.py
+```
+
+### 3.4. Xem mẫu dự đoán nhanh
+Sử dụng script hỗ trợ để xem kết quả dự đoán trực quan trên tập test:
+```bash
+python scratch/show_predictions.py
+```
+
+---
+
+## 4. Kết quả thực nghiệm (Results)
+
+Đánh giá trên tập dữ liệu kiểm thử (**1,117 câu hỏi**):
+
+| Cấu hình | Mô tả | VQA Acc (EM) | BLEU-4 | ROUGE-L |
+| :--- | :--- | :---: | :---: | :---: |
+| **A1** | Modular + LSTM | 46.91% | 0.0991 | 0.5666 |
+| **A2** | Modular + Transformer | **49.15%** | **0.1022** | **0.5903** |
+| **B2** | BLIP + LoRA | 3.31%* | 0.0090 | 0.0459 |
+
+*\*Lưu ý: Mô hình BLIP đạt điểm Accuracy thấp do vấn đề thiếu dấu tiếng Việt đầu ra, tuy nhiên khả năng nhận diện hình ảnh rất tốt (kết quả định tính).*
+
+---
+
+## 5. Thư mục và Tập tin quan trọng
+- `models/`: Định nghĩa kiến trúc Modular và BLIP.
+- `utils/data_loader.py`: Xử lý dữ liệu, phân tách từ (Underthesea) và tăng cường ảnh (Albumentations).
+- `config.py`: Quản lý toàn bộ cấu hình hệ thống.
+- `doc/`: Chứa các sơ đồ kiến trúc và báo cáo chi tiết.

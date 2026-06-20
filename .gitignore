@@ -1,9 +1,41 @@
+# Python
 .venv/
 __pycache__/
 *.pyc
-.ipynb_checkpoints/
+
+# IDEs
+.vscode/
+.idea/
+
+# Data & Notebooks
 data/
 results/
+.ipynb_checkpoints/
+
+# Models & Checkpoints
+checkpoints/
+*.pt
+*.pth
+*.bin
+*.model
+
+# Secrets & Configs
+kaggle.json
+access_token
+.kaggle/
 .claude/
 .agent/
+
+# Documents
+*.docx
 plan.md
+report.md
+
+# Secrets & Data
+.env
+*.zip
+
+# Local Utils
+download_models.py
+demo_all_models.py
+light_demo.py
